@@ -1,7 +1,7 @@
 /*
- * ESP32 WiFi Client Secure v2.0.3
+ * ESP32 WiFi Client Secure v2.0.10
  *
- * Created March 20, 2023
+ * Created July 28, 2023
  *
  * The MIT License (MIT)
  * Copyright (c) 2023 K. Suwatchai (Mobizt)
@@ -58,6 +58,7 @@
 #include "ESP32_SSL_Client.h"
 #include <WiFiClient.h>
 #include "./wcs/base/TCP_Client_Base.h"
+#include "lwip/sockets.h"
 
 typedef void (*DebugMsgCallback)(PGM_P msg, esp_mail_debug_tag_type type, bool newLine);
 
@@ -416,8 +417,20 @@ public:
 
 #endif
 
-private:
+#if !defined(ENABLE_CUSTOM_CLIENT)
+    int setOption(int option, int *value)
+    {
+#if defined(ESP_MAIL_ESP32_USE_WIFICLIENT_TEST) || defined(ESP_MAIL_ESP32_USE_WIFICLIENT_SOCKET_TEST)
+        // Actually we wish to use setSocketOption directly but it is ambiguous in old ESP32 core v1.0.x.;
+        // Use setOption instead for old core support.
+        return reinterpret_cast<WiFiClient *>(_ssl->client)->setOption(option, value);
+#else
+        return setsockopt(_ssl->socket, IPPROTO_TCP, option, (const void *)value, sizeof(int));
+#endif
+    }
+#endif
 
+private:
     MB_String _host;
     uint16_t _port;
     ssl_ctx *_ssl;
@@ -426,6 +439,7 @@ private:
     bool _use_external_sslclient = false;
     bool _withCert = false;
     bool _withKey = false;
+    bool _closed = false;
 
     Client *_client = nullptr;
 

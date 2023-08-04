@@ -14,8 +14,82 @@ The library also supported other Arduino devices via client libraries e.g. WiFiC
 
 The Arduino device to use this libray should has at least 80k flash space and 20k memory.
 
+## Contents
 
-# Features
+
+[1. Features](#features)
+
+[2. Supported Devices](#supported-devices)
+- [Supported Devices with flash size > 80k, using custom Clients.](#supported-devices-with-flash-size--80k-using-custom-clients)
+
+[3. Prerequisites](#prerequisites)
+- [Gmail SMTP and IMAP required App Passwords to sign in](#gmail-smtp-and-imap-required-app-passwords-to-sign-in)
+
+- [PlatformIO IDE Compile Options](#platformio-ide-compile-options)
+
+- [Third party SD library must be removed](#third-party-sd-library-must-be-removed)
+
+- [SdFat conflicts in ESP8266 and must be removed](#sdfat-conflicts-in-esp8266-and-must-be-removed)
+
+- [ESP32 and ESP8266 SDKs](#esp32-and-esp8266-sdks)
+
+- [RP2040 Arduino SDK](#rp2040-arduino-sdk)
+
+- [SAMD21 custom build firmware](#samd21-custom-build-firmware)
+
+- [Install Custom Build WiFiNINA Firmware](#install-custom-build-wifinina-firmware)
+
+[4. Library Instalation](#library-instalation)
+
+- [Using Library Manager](#using-library-manager)
+
+- [Manual installation](#manual-installation)
+
+[5. Memory Options](#memory-options)
+
+- [Memory Options for ESP8266](#memory-options-for-esp8266)
+
+  - [Arduino IDE](#arduino-ide)
+
+  - [PlatformIO IDE](#platformio-ide)
+
+  - [ESP8266 and SRAM/PSRAM Chip connection](#esp8266-and-srampsram-chip-connection)
+
+- [Memory Options for ESP32](#memory-options-for-esp32)
+
+  - [Arduino IDE](#arduino-ide-1)
+
+  - [PlatformIO IDE](#platformio-ide-1)
+
+
+[6. Exclude unused classes to save program space](#exclude-unused-classes-to-save-program-space)
+
+
+[7. Usage](#usage)
+
+- [Send Email](#send-email)
+
+- [Read Email](#read-email)
+
+- [Get Incoming Message Notification and Reading](#get-incoming-message-notification-and-reading)
+
+- [Sending Custom IMAP commands](#sending-custom-imap-commands)
+
+- [Using TCP session KeepAlive in ESP8266 and ESP32](#using-tcp-session-keepalive-in-esp8266-and-esp32)
+
+- [Use external Arduino Clients interfaces](#use-external-arduino-clients-interfaces)
+
+  - [TTGO T-A7670 LTE with TinyGSM](#ttgo-t-a7670-lte-with-tinygsm)
+
+  - [MKR 1000 and WiFi101](#mkr-1000-and-wifi101)
+
+  - [ESP32 and W5500](#esp32-and-w5500)
+
+[8. License](#license)
+
+
+
+## Features
 
 * Support Espressif's ESP32 and ESP8266, Raspberry Pi's RP2040 Pico, Atmel's SAMD21 devices with u-blox NINA-W102 WiFi/Bluetooth module.
 * Support TCP session reusage.
@@ -67,7 +141,13 @@ This following devices are supported.
  * Arduino Nano RP2040 Connect
  * Raspberry Pi Pico 
 
- ### Gmail SMTP and IMAP required App Passwords to sign in
+
+
+
+## Prerequisites
+
+
+### Gmail SMTP and IMAP required App Passwords to sign in
 
 From May 30, 2022, Google no longer supports the use of third-party apps or devices which ask you to sign in to your  GoogleAccount using only your username and password.
 
@@ -84,9 +164,6 @@ config.login.email = "<your email>";
 config.login.password = "<your app password>";
 ```
  
-
-
-## Prerequisites
 
 ### PlatformIO IDE Compile Options
 
@@ -141,11 +218,15 @@ board_build.filesystem_size = 1m
 See this Arduino-Pico SDK [documentation](https://arduino-pico.readthedocs.io/en/latest/) for more information.
 
 
+
 ### SAMD21 custom build firmware
 
 For Atmel's SAMD21 based boards, [custom build WiFiNINA firmware](https://github.com/mobizt/nina-fw) should be installed instead of official Arduino WiFiNINA firmware.
 
 This requirement is optional and has more advantages over the standard Arduino WiFiNINA firmware.
+
+
+You can use external client which is more convenient instead of install WiFiNINA firmware, please see [Use external Arduino Clients interfaces](#use-external-arduino-clients-interfaces) section.
 
 
 
@@ -223,10 +304,10 @@ Go to menu **Files** -> **Examples** -> **ESP Mail Client** and choose one from 
 
 
 
+## Memory Options
 
 
-
-## Memory Options for ESP8266
+### Memory Options for ESP8266
 
 This section is optional for memory settings in IDE.
 
@@ -234,7 +315,7 @@ When you update the ESP8266 Arduino Core SDK to v3.0.0, the memory can be config
 
 You can choose the Heap memory between internal and external memory chip from IDE e.g. Arduino IDE and PlatformIO on VSCode or Atom IDE.
 
-### Arduino IDE
+#### Arduino IDE
 
 
 For ESP8266 devices that don't have external SRAM/PSRAM chip installed, choose the MMU **option 3**, 16KB cache + 48KB IRAM and 2nd Heap (shared).
@@ -248,7 +329,7 @@ For ESP8266 devices that have external 23LC1024 SRAM chip installed, choose the 
 For ESP8266 devices that have external ESP-PSRAM64 chip installed, choose the MMU **option 6**, 1M External 64 MBit PSRAM.
 
 
-### PlatformIO IDE
+#### PlatformIO IDE
 
 The MMU options can be selected from build_flags in your project's platformio.ini file
 
@@ -290,7 +371,7 @@ monitor_speed = 115200
 ```
 
 
-### ESP8266 and SRAM/PSRAM Chip connection
+#### ESP8266 and SRAM/PSRAM Chip connection
 
 Most ESP8266 modules don't have the built-in SRAM/PSRAM on board. External memory chip connection can be done via SPI port as below.
 
@@ -317,20 +398,20 @@ This macro was defined by default when you installed or update the library.
 
 
 
-## Memory Options for ESP32
+### Memory Options for ESP32
 
 This section is optional for memory settings in IDE.
 
 In ESP32 module that has PSRAM installed, you can enable it and set the library to use this external memory instead.
 
-### Arduino IDE
+#### Arduino IDE
 
 To enable PSRAM in ESP32 module.
 
 ![Enable PSRAM in ESP32](/media/images/ESP32-PSRAM.png)
 
 
-### PlatformIO IDE
+#### PlatformIO IDE
 
 
 In PlatformIO on VSCode or Atom IDE, add the following build_flags in your project's platformio.ini file.
@@ -347,11 +428,7 @@ As in ESP8266, once the external Heap memory was enabled in IDE, to allow the li
 
 
 
-
-
-
-
-## Exclude unused classes to save memory 
+## Exclude unused classes to save program space 
 
 Now you can compile the library only for seclected classes.
 
@@ -372,7 +449,7 @@ In ESP8266 and ESP32, when no attachments require for uploading and downloading,
 #define ESP_Mail_DEFAULT_FLASH_FS SPIFFS
 ```
 
-In case you want to set your device/library time manually, you can exclude the internal NTP time synching by comment this macro that defined in [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h).
+In case you want to set your device/library time manually, you can exclude the internal NTP time reading by comment this macro that defined in [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h).
 
 ```cpp
 #define ENABLE_NTP_TIME
@@ -393,6 +470,45 @@ In case you only want to exclude the error flash string from library, please com
 ```cpp
 #define ENABLE_ERROR_STRING
 ```
+
+Since this library is not a single header library, the macro defined before the library inclusion in user sketch file will not be used or seen by all library codes in all source files due to different File Scope.
+
+Then your modified version of [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h) need to be back up before update the library because it will be overwritten when update the library.
+
+Alternatively, by leaving config in [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h) as its default setting and creat your own config file
+ Custom_ESP_Mail_FS.h in the same folder as [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h) and undefine the macro that already defined in [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h).
+
+When the library updated, the config file [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h) will be overwritten or replaced unless your Custom_ESP_Mail_FS.h will not be replaced and stayed there. 
+
+
+The following is the example of Custom_ESP_Mail_FS.h
+
+```cpp
+#ifndef ESP_MAIL_CUSTOM_FS_H_
+#define ESP_MAIL_CUSTOM_FS_H_
+
+// Not use SD
+#undef ESP_MAIL_DEFAULT_SD_FS 
+
+// Not use Flash
+#undef ESP_MAIL_DEFAULT_FLASH_FS
+
+// Not use NTP time (required device time should set by user)
+#undef ENABLE_NTP_TIME
+
+// Not show error string (show only error code)
+#undef ENABLE_ERROR_STRING
+
+// Not use SMTP
+#undef ENABLE_SMTP 
+
+// Not print all debug and callback
+#define SILENT_MODE
+
+#endif
+```
+
+
 
 ## Usage
 
@@ -660,6 +776,46 @@ Please read the RFC 3501 and RFC 9051 documents for the details of IMAP protocol
 See [Custom_Command examples](/examples/IMAP/Custom_Command) for how to use.
 
 
+### Using TCP session KeepAlive in ESP8266 and ESP32
+
+The server connection will be probed at some intervals to maintain connection.
+
+The TCP session KeepAlive can be enabled from executing `<SMTPSession>.keepAlive` or `<IMAPSession>.keepAlive` with providing TCP options as arguments, i.e.,
+
+`tcpKeepIdleSeconds`, `tcpKeepIntervalSeconds` and `tcpKeepCount`.
+
+Ex.
+
+```cpp
+smtp.keepAlive(5 /* tcp KeepAlive idle 5 seconds */, 5 /* tcp KeeAalive interval 5 seconds */, 1 /* tcp KeepAlive count 1 */);
+
+imap.keepAlive(5 /* tcp KeepAlive idle 5 seconds */, 5 /* tcp KeeAalive interval 5 seconds */, 1 /* tcp KeepAlive count 1 */);
+
+// If one of three arguments is zero, the KeepAlive will be disabled.
+```
+
+To check the KeepAlive status, use `<SMTPSession>.isKeepAlive` or `<IMAPSession>.isKeepAlive`.
+
+
+For the TCP (KeepAlive) options, see [here](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/lwip.html#tcp-options).
+
+You can check the server connecting status, by executing `<SMTPSession>.connected()` or `<IMAPSession>.connected()` which will return true when connection to the server is still alive. 
+
+
+The TCP KeepAlive was currently available in ESP32 unless in ESP8266, [this ESP8266 PR #8940](https://github.com/esp8266/Arduino/pull/8940) should be merged in the [ESP8266 Arduino Core SDK](https://github.com/esp8266/Arduino/releases), i.e., it will be supported in the ESP8266 core version newer than v3.1.2.
+
+
+In ESP8266 core v3.1.2 and older, the error can be occurred when executing `<SMTPSession>.keepAlive` or `<IMAPSession>.isKeepAlive` because of object slicing.
+
+
+The Arduino Pico is currently not support TCP KeepAlive until it's implemented in WiFiClientSecure library as in ESP8266.
+
+ 
+For External Client, this TCP KeepAlive option is not appliable and should be managed by external Client library.
+
+
+
+
 ### Use external Arduino Clients interfaces
 
 The Arduino Clients for network interfaces (WiFiClient, EthernetClient and GSMClient) which support non-secure network connection can be used as external client.
@@ -682,24 +838,90 @@ To use custom (external) Client for such WiFi capable devices, the following mac
 ```
 
 
-See [External (Custom) Client Examples](/examples/SMTP/External_Client) for complete Client example.
+In ESP8266 and Raspberry Pi Pico devices with the SDK is already contains the SSL engine library (BearSSL), when macro `ESP_MAIL_USE_SDK_SSL_ENGINE` was defined in  [**ESP_Mail_FS.h**](src/ESP_Mail_FS.h), the BearSSL engine will used to do SSL handshake when the SSL/TLS is required.
+
+In this case, the basic client of network devices (EthernetClient and GSMClient) can be used as external client instead of SSL client.
+
+Since [v3.3.0](https://github.com/mobizt/ESP-Mail-Client/releases/tag/v3.3.0), for ESP32, the internal SSL engine (`mbedTLS`) will not apply to the external client when SSL/TLS is required. 
+
+This happens since [v3.3.0](https://github.com/mobizt/ESP-Mail-Client/releases/tag/v3.3.0) that the internal lwIP TCP client for ESP32 works with `mbedTLS` via the socket directly instead of Client (that is easily applied with external client) in earlier version. 
+
+The lwIP TCP client implemented for ESP32 in [v3.3.0](https://github.com/mobizt/ESP-Mail-Client/releases/tag/v3.3.0) gains more performance and speed over the WiFiClient used since [v2.5.0](https://github.com/mobizt/ESP-Mail-Client/releases/tag/v2.5.0) 
+
+From this reason, the build flag `ESP_MAIL_USE_SDK_SSL_ENGINE`in ESP32 will not applied, the external client should be able to do SSL handshake when SSL/TLS is required.
+
+Then the examples that used ESP32 with external client will require the SSL Client or conection upgradable SSL Client when used in SSL/TLS applications.
+
+See [External (Custom) Client Examples](/examples/SMTP/External_Client) for complete external Client example.
 
 
-The following example showed how to use `GSMClient` and [SSLClient](https://github.com/mobizt/SSLClient) to connect to SMTP server via port 587 which required connection upgrade.
+#### TTGO T-A7670 LTE with TinyGSM
+
+The following example showed how to use TTGO T-A7670 with `GSMClient` and [ESP_SSLClient](https://github.com/mobizt/ESP_SSLClient) to connect to SMTP server via port 587 which required connection upgrade to TLS with STARTTLS.
 
 
 ```cpp
 
-GSMClient client; // basic non-secure client
+// For TTGO T-A7670
+#define TINY_GSM_MODEM_SIM7600 // SIMA7670 Compatible with SIM7600 AT instructions
 
-/** The parameters passed to the SSLClient constructor
- * TAs is Trust anchors used in the verification of the SSL server certificate. 
- * Check out https://github.com/mobizt/SSLClient/blob/master/TrustAnchors.md for more info.
- * TAs_NUM is the number of objects in the trust_anchors array.
- * rand_pin is an analog pin to pull random bytes from, used in seeding the RNG.
- */
-// https://github.com/mobizt/SSLClient
-SSLClient ssl_client(client, TAs, (size_t)TAs_NUM, rand_pin); 
+// Set serial for debug console (to the Serial Monitor, default speed 115200)
+#define SerialMon Serial
+
+// Set serial for AT commands (to the module)
+// Use Hardware Serial on Mega, Leonardo, Micro
+#define SerialAT Serial1
+
+// See all AT commands, if wanted
+// #define DUMP_AT_COMMANDS
+
+// Define the serial console for debug prints, if needed
+#define TINY_GSM_DEBUG SerialMon
+
+#define TINY_GSM_USE_GPRS true
+#define TINY_GSM_USE_WIFI false
+
+// set GSM PIN, if any
+#define GSM_PIN ""
+
+// Your GPRS credentials, if any
+const char apn[] = "YourAPN";
+const char gprsUser[] = "";
+const char gprsPass[] = "";
+
+#define UART_BAUD 115200
+#define PIN_DTR 25
+#define PIN_TX 26
+#define PIN_RX 27
+#define PWR_PIN 4
+#define BAT_ADC 35
+#define BAT_EN 12
+#define PIN_RI 33
+#define PIN_DTR 25
+#define RESET 5
+
+#define SD_MISO 2
+#define SD_MOSI 15
+#define SD_SCLK 14
+#define SD_CS 13
+
+#include <TinyGsmClient.h>
+
+#include <ESP_SSLClient.h>
+
+#include <ESP_Mail_Client.h>
+
+// Set serial for debug console
+#define SerialMon Serial
+
+// Set serial for AT commands (to the module)
+#define SerialAT Serial1
+
+TinyGsm modem(SerialAT);
+
+TinyGsmClient basic_client(modem); // basic non-secure client
+
+ESP_SSLClient ssl_client;
 
 SMTPSession smtp(&ssl_client, esp_mail_external_client_type_basic); 
 // port 587 required non-secure connection during greeting and 
@@ -707,34 +929,128 @@ SMTPSession smtp(&ssl_client, esp_mail_external_client_type_basic);
 
 void connectionUpgradeRequestCallback()
 {
-    //To make sure that upgradable SSLClient https://github.com/mobizt/SSLClient was installed instead of
-    // the original version
-#if defined(SSLCLIENT_CONNECTION_UPGRADABLE)
-    // Upgrade the connection
-    // The host and port parameters will be ignored for this case and can be any
-    ssl_client.connectSSL("smtp.gmail.com" /* host */, 587 /* port */);
-    
-#endif
+    // Upgrade the connection from plain to TLS
+    ssl_client.connectSSL();
+
 }
 
 // Define the callback function to handle server status acknowledgement
 void networkStatusRequestCallback()
 {
     // Set the network status
-    bool networkConnected;
-
-    // networkConnected = modem.isNetworkConnected();
-
-    smtp.setNetworkStatus(networkConnected);
+    smtp.setNetworkStatus(modem.isNetworkConnected());
 }
 
 void networkConnection()
 {
-    // Code for network reset, disconnect and re-connect here.
+    if(modem.isGprsConnected())
+    {
+      modem.gprsDisconnect();
+      SerialMon.println(F("GPRS disconnected"));
+    }
+
+    // Restart takes quite some time
+    // To skip it, call init() instead of restart()
+    DBG("Initializing modem...");
+    if (!modem.init())
+    {
+        DBG("Failed to restart modem, delaying 10s and retrying");
+        return;
+    }
+
+    /*
+    2 Automatic
+    13 GSM Only
+    14 WCDMA Only
+    38 LTE Only
+    */
+    modem.setNetworkMode(38);
+    if (modem.waitResponse(10000L) != 1)
+    {
+        DBG(" setNetworkMode faill");
+        return;
+    }
+
+    SerialMon.print("Waiting for network...");
+    if (!modem.waitForNetwork())
+    {
+        SerialMon.println(" fail");
+        delay(10000);
+        return;
+    }
+    SerialMon.println(" success");
+
+    if (modem.isNetworkConnected())
+    {
+        SerialMon.println("Network connected");
+    }
+
+#if TINY_GSM_USE_GPRS
+    // GPRS connection parameters are usually set after network registration
+    SerialMon.print(F("Connecting to "));
+    SerialMon.print(apn);
+    if (!modem.gprsConnect(apn, gprsUser, gprsPass))
+    {
+        SerialMon.println(" fail");
+        delay(10000);
+        return;
+    }
+    SerialMon.println(" success");
+
+    if (modem.isGprsConnected())
+    {
+        SerialMon.println("GPRS connected");
+    }
+#endif
+
 }
 
 void serup()
 {
+
+    SerialMon.begin(115200);
+
+    SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
+
+    String name = modem.getModemName();
+    DBG("Modem Name:", name);
+
+    String modemInfo = modem.getModemInfo();
+    DBG("Modem Info:", modemInfo);
+
+#if TINY_GSM_USE_GPRS
+    // Unlock your SIM card with a PIN if needed
+    if (GSM_PIN && modem.getSimStatus() != 3)
+    {
+        modem.simUnlock(GSM_PIN);
+    }
+#endif
+
+    networkConnection();
+
+    // Ignore server ssl certificate verification
+    ssl_client.setInsecure();
+
+    // Set the receive and transmit buffers size in bytes for memory allocation (512 to 16384).
+    // Rx and tx Recommendations
+    // For SMTP application, rx = 1024, tx = 512
+    // For IMAP application, rx = 16384, tx = 512
+    // In case of IMAP, if rx is set bekow 16k, the connection will fail then
+    // the device that used for IMAP application should have memory at least 20k. 
+    ssl_client.setBufferSizes(1024 /* rx */, 512 /* tx */);
+
+    ssl_client.setDebugLevel(1);
+
+    // Assign the basic client
+    // The second parameter is the enable SSL connection option.
+    // We will not auto connect in SSL mode (with SSL handshake) since first connect by set this option to 'false'. 
+    // We will do the SSL handshake later when STARTTLS request was accepted by server
+    // which connectionUpgradeRequestCallback was call when TLS is required.
+    // And we will call ssl_client.connectSSL(); in that callback to do SSL handshake.
+    // If port 465 used instead of 587, the second parameter should be 'true' 
+    // and the connection upgrade callback is not neccessary.  
+    ssl_client.setClient(&basic_client, false /* Don't do TLS handshake at the first connection */);
+
 
     config.server.host_name = "smtp.gmail.com"; //for gmail.com
     config.server.port = 587; // requires connection upgrade via STARTTLS
@@ -742,10 +1058,6 @@ void serup()
     config.login.password = "your Email password"; //set to empty for no SMTP Authentication
     config.login.user_domain = "client domain or ip e.g. mydomain.com";
 
-    /**
-     * Other setup codes
-     * 
-     */
     
     // Set the callback function for connection upgrade
     smtp.connectionUpgradeRequestCallback(connectionUpgradeRequestCallback);
@@ -754,11 +1066,41 @@ void serup()
 
     smtp.networkConnectionRequestCallback(networkConnection);
 
+    // Declare the SMTP_Message class variable to handle to message being transport
+    SMTP_Message message;
+
+    // Set the message headers
+    message.sender.name = "My Mail";
+    message.sender.email = "sender or your Email address";
+    message.subject = "Test sending Email";
+    message.addRecipient("name1", "email1");
+    message.addRecipient("name2", "email2");
+
+    message.addCc("email3");
+    message.addBcc("email4");
+
+    // Set the message content
+    message.text.content = "This is simple plain text message";
+  
+    // Set the callback functions to hadle the required tasks.
+    smtp.networkStatusRequestCallback(networkStatusRequestCallback);
+
+    smtp.networkConnectionRequestCallback(networkConnection);
+
+    // Connect to the server with the defined session and options
+    smtp.connect(&config);
+
+
+    // Start sending Email and close the session
+    if (!MailClient.sendMail(&smtp, &message))
+      Serial.println("Error sending Email, " + smtp.errorReason());
+
 }
 
 
 ```
 
+#### MKR 1000 and WiFi101
 
 The below example will use Arduino MKR 1000 and WiFi101 library.
 
@@ -766,6 +1108,8 @@ The below example will use Arduino MKR 1000 and WiFi101 library.
 ```cpp
 
 #include <WiFi101.h>
+
+#include <ESP_Mail_Client.h>
 
 // Declare the global used Client object
 WiFiSSLClient ssl_client; // secured client
@@ -812,11 +1156,6 @@ void networkStatusRequestCallback()
     smtp.setNetworkStatus(WiFi.status() == WL_CONNECTED);
 }
 
-void networkConnection()
-{
-    // Code for network reset, disconnect and re-connect here.
-}
-
 void setup()
 {
 
@@ -853,7 +1192,6 @@ void setup()
 
   smtp.networkConnectionRequestCallback(networkConnection);
 
-
   // Connect to the server with the defined session and options
   smtp.connect(&config);
 
@@ -867,38 +1205,116 @@ void setup()
 
 
 ```
+#### ESP32 and W5500
 
-
-The below example will use ESP32 and GSMClient library.
+The below example will use ESP32 and W5500 and Ethernet client library to connect to SMTP server via port 587 (TLS via STARTTLS)
 
 
 ```cpp
 
-GSMClient client; // basic non-secure client
+#include <Ethernet.h>
 
-SMTPSession smtp(&client, esp_mail_external_client_type_basic); 
-// We can assign basic Client directly in ESP8266 and ESP32 as library will handle 
-// the connection upgrade (if needed in case of SMTP port 587) using Core SDK SSL engine.
+#include <ESP_SSLClient.h>
 
+#include <ESP_Mail_Client.h>
 
-// Define the callback function to handle server status acknowledgement
-void networkStatusRequestCallback()
+#define WIZNET_RESET_PIN 26 // Connect W5500 Reset pin to GPIO 26 of ESP32
+#define WIZNET_CS_PIN 5     // Connect W5500 CS pin to GPIO 5 of ESP32
+#define WIZNET_MISO_PIN 19  // Connect W5500 MISO pin to GPIO 19 of ESP32
+#define WIZNET_MOSI_PIN 23  // Connect W5500 MOSI pin to GPIO 23 of ESP32
+#define WIZNET_SCLK_PIN 18  // Connect W5500 SCLK pin to GPIO 18 of ESP32
+
+ESP_SSLClient ssl_client;
+
+EthernetClient basic_client;
+
+uint8_t Eth_MAC[] = {0x02, 0xF0, 0x0D, 0xBE, 0xEF, 0x01};
+
+SMTPSession smtp(&ssl_client, esp_mail_external_client_type_basic); 
+
+Session_Config config;
+
+void ResetEthernet()
 {
-    // Set the network status
-    bool networkConnected;
-
-    // networkConnected = modem.isNetworkConnected();
-
-    smtp.setNetworkStatus(networkConnected);
+    Serial.println("Resetting WIZnet W5500 Ethernet Board...  ");
+    pinMode(WIZNET_RESET_PIN, OUTPUT);
+    digitalWrite(WIZNET_RESET_PIN, HIGH);
+    delay(200);
+    digitalWrite(WIZNET_RESET_PIN, LOW);
+    delay(50);
+    digitalWrite(WIZNET_RESET_PIN, HIGH);
+    delay(200);
 }
 
 void networkConnection()
 {
-    // Code for network reset, disconnect and re-connect here.
+
+    Ethernet.init(WIZNET_CS_PIN);
+
+    ResetEthernet();
+
+    Serial.println("Starting Ethernet connection...");
+    Ethernet.begin(Eth_MAC);
+
+    unsigned long to = millis();
+
+    while (Ethernet.linkStatus() == LinkOFF || millis() - to < 2000)
+    {
+        delay(100);
+    }
+
+    if (Ethernet.linkStatus() == LinkON)
+    {
+        Serial.print("Connected with IP ");
+        Serial.println(Ethernet.localIP());
+    }
+    else
+    {
+        Serial.println("Can't connect");
+    }
+}
+
+void networkStatusRequestCallback()
+{
+
+    smtp.setNetworkStatus(Ethernet.linkStatus() == LinkON);
+}
+
+void connectionUpgradeRequestCallback()
+{
+    // Upgrade the connection from plain to TLS
+    ssl_client.connectSSL();
+
 }
 
 void serup()
 {
+    Serial.begin(115200);
+
+    networkConnection();
+
+    // Ignore server ssl certificate verification
+    ssl_client.setInsecure();
+
+    // Set the receive and transmit buffers size in bytes for memory allocation (512 to 16384).
+    // Rx and tx Recommendations
+    // For SMTP application, rx = 1024, tx = 512
+    // For IMAP application, rx = 16384, tx = 512
+    // In case of IMAP, if rx is set bekow 16k, the connection will fail then
+    // the device that used for IMAP application should have memory at least 20k. 
+    ssl_client.setBufferSizes(1024 /* rx */, 512 /* tx */);
+
+    ssl_client.setDebugLevel(1);
+
+    // Assign the basic client
+    // The second parameter is the enable SSL connection option.
+    // We will not auto connect in SSL mode (with SSL handshake) since first connect by set this option to 'false'. 
+    // We will do the SSL handshake later when STARTTLS request was accepted by server
+    // which connectionUpgradeRequestCallback was call when TLS is required.
+    // And we will call ssl_client.connectSSL(); in that callback to do SSL handshake.
+    // If port 465 used instead of 587, the second parameter should be 'true' 
+    // and the connection upgrade callback is not neccessary.  
+    ssl_client.setClient(&basic_client, false /* Don't do TLS handshake at the first connection */);
 
     config.server.host_name = "smtp.gmail.com"; //for gmail.com
     config.server.port = 587; // requires connection upgrade via STARTTLS
@@ -906,20 +1322,41 @@ void serup()
     config.login.password = "your Email password"; //set to empty for no SMTP Authentication
     config.login.user_domain = "client domain or ip e.g. mydomain.com";
 
-    /**
-     * Other setup codes
-     * 
-     */
+    // Declare the SMTP_Message class variable to handle to message being transport
+    SMTP_Message message;
 
-    // Set the callback function for server connection.
+    // Set the message headers
+    message.sender.name = "My Mail";
+    message.sender.email = "sender or your Email address";
+    message.subject = "Test sending Email";
+    message.addRecipient("name1", "email1");
+    message.addRecipient("name2", "email2");
+
+    message.addCc("email3");
+    message.addBcc("email4");
+
+    // Set the message content
+    message.text.content = "This is simple plain text message";
+
+     // Set the callback function for connection upgrade
+    smtp.connectionUpgradeRequestCallback(connectionUpgradeRequestCallback);
+
     smtp.networkStatusRequestCallback(networkStatusRequestCallback);
 
     smtp.networkConnectionRequestCallback(networkConnection);
+
+    // Connect to the server with the defined session and options
+    smtp.connect(&config);
+
+    // Start sending Email and close the session
+    if (!MailClient.sendMail(&smtp, &message))
+      Serial.println("Error sending Email, " + smtp.errorReason());
   
 }
 
 
 ```
+
 
 ## License
 

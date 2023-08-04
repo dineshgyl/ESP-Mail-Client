@@ -6,7 +6,7 @@
 #define ESP_MAIL_CONFIG_H
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30110)
+#if !VALID_VERSION_CHECK(30307)
 #error "Mixed versions compilation."
 #endif
 
@@ -16,7 +16,7 @@
 /* 📌 Enable silent mode (no debug printing and callback) */
 // #define SILENT_MODE
 
-/* 📌 Enable the NTP server time synching */
+/* 📌 Enable the NTP server time reading */
 #define ENABLE_NTP_TIME
 
 /* 📌 Enable the error string from error reason */
@@ -137,7 +137,7 @@
  * This macro allows library to use external basic Client and external SSL Client interface.
  * The associated callback functions should be assigned based on port functions.
  */
-// #define ENABLE_CUSTOM_CLIENT
+  #define ENABLE_CUSTOM_CLIENT
 
 /* 📌 To use ESP8266 ENC28J60 Ethernet module */
 // #define ENABLE_ESP8266_ENC28J60_ETH
@@ -150,9 +150,13 @@
 
 /** 📌 ESP8266/ESP32/RP2040 SSL engine for basic Client compilation option
  *
- * This macro allows library to use ESP8266 and ESP32 devices with
+ * This macro allows library to use ESP8266 and Raspberry Pi Pico devices with
  * basic Clients (EthernetClient, WiFiClient and GSMClient)
- * directly without external SSL client required.
+ * directly without external SSL client required for SSL and STARTTLS ports.
+ *
+ * Since version 3.3.0, the internal SSL engine (mbedTLS) use in ESP32 will not do
+ * SSL handshake when external basic client was assigned, then external SSL client
+ * is required in case of SSL and STARTTLS ports.
  */
 #define ESP_MAIL_USE_SDK_SSL_ENGINE
 
@@ -174,8 +178,8 @@
 
 // Use LittleFS instead of SPIFFS
 #include "LittleFS.h"
-#undef DEFAULT_FLASH_FS // remove Flash FS defined macro
-#define DEFAULT_FLASH_FS LittleFS
+#undef ESP_MAIL_DEFAULT_FLASH_FS // remove Flash FS defined macro
+#define ESP_MAIL_DEFAULT_FLASH_FS LittleFS
 
 // Use SD_MMC instead of SD
 #if defined(ESP32)

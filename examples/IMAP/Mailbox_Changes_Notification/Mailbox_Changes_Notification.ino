@@ -105,9 +105,7 @@ IMAPSession imap;
 /* Declare the global used Session_Config for user defined session credentials */
 Session_Config config;
 
-/** Declare the global used IMAP_Data object used for user defined IMAP operating options
- * and contains the IMAP operating result
- */
+/* Define the IMAP_Data object used for user defined IMAP operating options. */
 IMAP_Data imap_data;
 
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
@@ -128,7 +126,7 @@ void connectWiFi()
 #endif
 
     Serial.print("Connecting to Wi-Fi");
-        
+
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
     unsigned long ms = millis();
 #endif
@@ -217,6 +215,17 @@ void setup()
      * in case of lost internet connection for re-listening the mailbox.
      */
     config.network_connection_handler = connectWiFi;
+
+    // You can use TCP KeepAlive for more reliable of listen (idle) operation, please read this for detail.
+    // https://github.com/mobizt/ESP-Mail-Client#using-tcp-session-keepalive-in-esp8266-and-esp32
+    // You can use keepAlive in ESP8266 core version newer than v3.1.2.
+    // Or you can use git version (v3.1.2) https://github.com/esp8266/Arduino
+#if defined(ESP32)
+    imap.keepAlive(5, 5, 1);
+#endif
+
+    /* Set the TCP response read timeout in seconds */
+    // smtp.setTCPTimeout(10);
 
     /* Connect to the server */
     if (!imap.connect(&config, &imap_data))
@@ -324,9 +333,13 @@ void printSelectedMailboxInfo(SelectedFolderInfo sFolder)
     ESP_MAIL_PRINTF("\nInfo of the selected folder\nTotal Messages: %d\n", sFolder.msgCount());
     ESP_MAIL_PRINTF("UID Validity: %d\n", sFolder.uidValidity());
     ESP_MAIL_PRINTF("Predicted next UID: %d\n", sFolder.nextUID());
-    ESP_MAIL_PRINTF("Unseen Message Index: %d\n", sFolder.unseenIndex());
+    if (sFolder.unseenIndex() > 0)
+        ESP_MAIL_PRINTF("First Unseen Message Number: %d\n", sFolder.unseenIndex());
+    else
+        ESP_MAIL_PRINTF("Unseen Messages: No\n");
+
     if (sFolder.modSeqSupported())
-        ESP_MAIL_PRINTF("Highest Modification Sequence: %d\n", sFolder.highestModSeq());
+        ESP_MAIL_PRINTF("Highest Modification Sequence: %llu\n", sFolder.highestModSeq());
     for (size_t i = 0; i < sFolder.flagCount(); i++)
         ESP_MAIL_PRINTF("%s%s%s", i == 0 ? "Flags: " : ", ", sFolder.flag(i).c_str(), i == sFolder.flagCount() - 1 ? "\n" : "");
 
@@ -365,14 +378,15 @@ void printMessages(MB_VECTOR<IMAP_MSG_Item> &msgItems, bool headerOnly)
         Serial.println("****************************");
         ESP_MAIL_PRINTF("Number: %d\n", msg.msgNo);
         ESP_MAIL_PRINTF("UID: %d\n", msg.UID);
-        ESP_MAIL_PRINTF("Messsage-ID: %s\n", msg.ID);
 
-        ESP_MAIL_PRINTF("Flags: %s\n", msg.flags);
-
-        // The attachment status in search may be true in case the "multipart/mixed" 
+        // The attachment status in search may be true in case the "multipart/mixed"
         // content type header was set with no real attachtment included.
         ESP_MAIL_PRINTF("Attachment: %s\n", msg.hasAttachment ? "yes" : "no");
 
+        ESP_MAIL_PRINTF("Messsage-ID: %s\n", msg.ID);
+
+        if (strlen(msg.flags))
+            ESP_MAIL_PRINTF("Flags: %s\n", msg.flags);
         if (strlen(msg.acceptLang))
             ESP_MAIL_PRINTF("Accept Language: %s\n", msg.acceptLang);
         if (strlen(msg.contentLang))

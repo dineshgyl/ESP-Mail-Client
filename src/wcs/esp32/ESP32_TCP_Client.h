@@ -1,7 +1,7 @@
 /*
- * ESP32 TCP Client Library v2.0.10
+ * ESP32 TCP Client Library v2.0.14
  *
- * Created March 28, 2023
+ * Created August 3, 2023
  *
  * The MIT License (MIT)
  * Copyright (c) 2023 K. Suwatchai (Mobizt)
@@ -98,6 +98,12 @@ public:
    * @return true for link up or false for link down.
    */
   bool ethLinkUp();
+
+  /**
+   * Checking for valid IP.
+   * @return true for valid.
+   */
+  bool validIP(IPAddress ip);
 
   /**
    * Ethernet DNS workaround.
@@ -294,7 +300,11 @@ public:
 
   void setExtClientType(esp_mail_external_client_type type)
   {
+// Changed since ESP_MAIL_USE_SDK_SSL_ENGINE flag is not applied in v3.3.0
+// because the internal lwIP TCP client was used with mbedTLS instead of Client in earlier version.
+#if defined(ENABLE_CUSTOM_CLIENT)
     wcs->setExtClientType(type);
+#endif
   }
 
   void set_tlsErrr(bool err)
@@ -323,6 +333,16 @@ public:
   }
 
   void disconnect(){};
+
+#if !defined(ENABLE_CUSTOM_CLIENT)
+
+  void keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount)
+  {
+    wcs->keepAlive(tcpKeepIdleSeconds, tcpKeepIntervalSeconds, tcpKeepIntervalSeconds);
+  };
+
+  bool isKeepAlive() { return wcs->_isKeepAlive; };
+#endif
 
 #if defined(ENABLE_CUSTOM_CLIENT)
   /**

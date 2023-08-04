@@ -1,4 +1,4 @@
-// Created April 16, 2022
+// Created July 28, 2023
 
 #pragma once
 
@@ -6,7 +6,7 @@
 #define ESP_MAIL_CONST_H
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30110)
+#if !VALID_VERSION_CHECK(30307)
 #error "Mixed versions compilation."
 #endif
 
@@ -46,6 +46,8 @@
 #define ESP_MAIL_OTA_UPDATE_ENABLED
 #endif
 
+#define TCP_CLIENT_DEFAULT_TCP_TIMEOUT_SEC 30
+
 #if defined(ENABLE_SMTP) || defined(ENABLE_IMAP)
 
 #define MAX_EMAIL_SEARCH_LIMIT 1000
@@ -56,7 +58,7 @@
 #define ESP_MAIL_PROGRESS_REPORT_STEP 5
 #define ESP_MAIL_CLIENT_TRANSFER_DATA_FAILED 0
 #define ESP_MAIL_CLIENT_STREAM_CHUNK_SIZE 256
-#define ESP_MAIL_CLIENT_RESPONSE_BUFFER_SIZE 1024 // should be 1 k or more
+#define ESP_MAIL_CLIENT_RESPONSE_BUFFER_SIZE 1024 // should be 1 k or more to prevent buffer overflow
 #define ESP_MAIL_CLIENT_VALID_TS 1577836800
 
 #endif
@@ -1109,6 +1111,8 @@ private:
 
 // The smtp auth capability with leading space.
 static esp_mail_smtp_auth_tokens smtp_auth_cap_pre_tokens(true);
+// The smtp auth capability with trailing space.
+static esp_mail_smtp_auth_tokens smtp_auth_cap_post_tokens(false);
 
 struct esp_mail_smtp_send_capability_t
 {
@@ -1237,6 +1241,9 @@ private:
 // The imap auth capability with leading space.
 static esp_mail_imap_read_tokens imap_read_cap_pre_tokens(true);
 
+// The imap auth capability with trailing space.
+static esp_mail_imap_read_tokens imap_read_cap_post_tokens(false);
+
 struct esp_mail_imap_identification_key_t
 {
     char text[15];
@@ -1278,6 +1285,18 @@ typedef struct esp_mail_imap_identity_t
 
 #endif
 
+#endif
+
+#if defined(ENABLE_SMTP) || defined(ENABLE_IMAP)
+/* The email address info [SMTP_Message]*/
+struct esp_mail_address_info_t
+{
+    /* The name of Email author/sender */
+    MB_String name;
+
+    /* The Email address */
+    MB_String email;
+};
 #endif
 
 #if defined(ENABLE_SMTP)
@@ -1471,23 +1490,6 @@ struct esp_mail_attachment_t
     struct esp_mail_attach_internal_t _int;
 };
 
-/* Used internally in SMTP to keep the recipient data */
-struct esp_mail_smtp_recipient_t
-{
-    /* The recipient's name */
-    MB_String name;
-
-    /* The recipient's Email address */
-    MB_String email;
-};
-
-/* Used internally in SMTP to keep the cc recipient data */
-struct esp_mail_smtp_recipient_address_t
-{
-    /* The recipient's Email address */
-    MB_String email;
-};
-
 /* The struct used as SMTP_Result */
 struct esp_mail_smtp_send_status_t
 {
@@ -1561,16 +1563,6 @@ typedef struct esp_mail_smtp_response_status_t
     int id = -1;
     MB_String text;
 } SMTP_Response;
-
-/* The sender/recipient info [SMTP_Message]*/
-struct esp_mail_email_info_t
-{
-    /* The name of Email author*/
-    MB_String name;
-
-    /* The Email address */
-    MB_String email;
-};
 
 #endif
 
@@ -2178,8 +2170,8 @@ struct esp_mail_message_header_t
 
     MB_String content_type;
     MB_String content_transfer_encoding;
-    uint32_t message_uid;
-    uint32_t message_no;
+    uint32_t message_uid = 0;
+    uint32_t message_no = 0;
     MB_String boundary;
     MB_String accept_language;
     MB_String content_language;
@@ -2344,6 +2336,9 @@ struct esp_mail_imap_fetch_config_t
 
     /* The int32_t option for CHANGESINCE conditional test. */
     int32_t modsequence = 0;
+
+    /* The config to fetch only the header */
+    bool headerOnly = false;
 };
 
 struct esp_mail_imap_firmware_config_t
@@ -2533,13 +2528,14 @@ struct esp_mail_imap_multipart_level_t
 struct esp_mail_imap_response_data
 {
 public:
-    esp_mail_imap_response_data(int bufLen) { chunkBufSize = bufLen; };
     esp_mail_imap_response_status imapResp = esp_mail_imap_resp_unknown;
     char *response = nullptr;
     int readLen = 0;
     long dataTime = millis();
     int chunkBufSize = 512;
     int chunkIdx = 0;
+    bool isUntaggedResponse = false;
+    bool untaggedRespCompleted = false;
     bool completedResponse = false;
     bool endSearch = false;
     struct esp_mail_message_header_t header;
@@ -2553,6 +2549,22 @@ public:
     int searchCount = 0;
     char *lastBuf = nullptr;
     char *buf = nullptr;
+
+    esp_mail_imap_response_data(int bufLen) { chunkBufSize = bufLen; };
+    ~esp_mail_imap_response_data() { clear(); }
+    void clear()
+    {
+        if (response)
+            free(response);
+        if (lastBuf)
+            free(lastBuf);
+        if (buf)
+            free(buf);
+
+        response = nullptr;
+        lastBuf = nullptr;
+        buf = nullptr;
+    }
 };
 
 #endif
@@ -2892,7 +2904,7 @@ static const char esp_mail_dbg_str_17[] PROGMEM = "No ESMTP supported, send SMTP
 static const char esp_mail_dbg_str_18[] PROGMEM = "connecting to IMAP server";
 static const char esp_mail_dbg_str_19[] PROGMEM = "Host > ";
 static const char esp_mail_dbg_str_20[] PROGMEM = "Port > ";
-static const char esp_mail_dbg_str_21[] PROGMEM = "wait for NTP server time synching";
+static const char esp_mail_dbg_str_21[] PROGMEM = "Reading time from NTP server";
 static const char esp_mail_dbg_str_22[] PROGMEM = "perform SSL/TLS handshake";
 
 #if defined(ENABLE_IMAP)
@@ -3059,17 +3071,20 @@ static const char esp_mail_error_mem_str_7[] PROGMEM = "file I/O error";
 #endif
 
 static const char esp_mail_error_mem_str_8[] PROGMEM = "out of memory";
+static const char esp_mail_error_mem_str_9[] PROGMEM = "buffer overflow";
 
-#if defined(MB_ARDUINO_PICO)
-static const char esp_mail_error_mem_str_9[] PROGMEM = "please make sure that the size of flash filesystem is not 0 in Pico.";
 #endif
 
+#if defined(MB_ARDUINO_PICO)
+#if defined(ENABLE_ERROR_STRING) || !defined(SILENT_MODE)
+static const char esp_mail_error_mem_str_10[] PROGMEM = "please make sure that the size of flash filesystem is not 0 in Pico.";
+#endif
 #endif
 
 /////////////////////////
 // Client error string
 
-#if defined(ENABLE_ERROR_STRING)
+#if !defined(SILENT_MODE)
 static const char esp_mail_error_client_str_1[] PROGMEM = "client and/or necessary callback functions are not yet assigned";
 static const char esp_mail_error_client_str_2[] PROGMEM = "custom Client is not yet enabled";
 static const char esp_mail_error_client_str_3[] PROGMEM = "simple Client is required";
@@ -3078,7 +3093,7 @@ static const char esp_mail_error_client_str_5[] PROGMEM = "client connection upg
 static const char esp_mail_error_client_str_6[] PROGMEM = "network connection callback is required";
 static const char esp_mail_error_client_str_7[] PROGMEM = "network connection status callback is required";
 static const char esp_mail_error_client_str_8[] PROGMEM = "client is not yet initialized";
-static const char esp_mail_error_client_str_9[] PROGMEM = "UDP client is required for NTP server time synching based on your network type";
+static const char esp_mail_error_client_str_9[] PROGMEM = "UDP client is required for NTP server time reading based on your network type";
 static const char esp_mail_error_client_str_10[] PROGMEM = "e.g. WiFiUDP or EthernetUDP. Please call MailClient.setUDPClient(&udpClient, gmtOffset); to assign the UDP client";
 static const char esp_mail_error_client_str_11[] PROGMEM = "the Connection Request Callback is now optional";
 #endif
@@ -3086,15 +3101,17 @@ static const char esp_mail_error_client_str_11[] PROGMEM = "the Connection Reque
 /////////////////////////
 // Network error string
 
+#if !defined(SILENT_MODE)
+static const char esp_mail_error_network_str_1[] PROGMEM = "unable to connect to server";
 #if defined(ENABLE_ERROR_STRING)
-static const char esp_mail_error_network_str_1[] PROGMEM = "NTP server time synching timed out";
-static const char esp_mail_error_network_str_2[] PROGMEM = "unable to connect to server";
-static const char esp_mail_error_network_str_3[] PROGMEM = "session timed out";
+static const char esp_mail_error_network_str_2[] PROGMEM = "NTP server time reading timed out";
+static const char esp_mail_error_network_str_3[] PROGMEM = "response read timed out";
 static const char esp_mail_error_network_str_4[] PROGMEM = "not connected";
 static const char esp_mail_error_network_str_5[] PROGMEM = "connection timeout";
 static const char esp_mail_error_network_str_6[] PROGMEM = "connection closed";
 static const char esp_mail_error_network_str_7[] PROGMEM = "connection refused";
 static const char esp_mail_error_network_str_8[] PROGMEM = "data sending failed";
+#endif
 #endif
 
 #if defined(ENABLE_ERROR_STRING) || !defined(SILENT_MODE)
@@ -3177,7 +3194,7 @@ static const char esp_mail_error_imap_str_13[] PROGMEM = "this feature was not s
 static const char esp_mail_error_imap_str_14[] PROGMEM = "no message changed since (assigned) modsec";
 static const char esp_mail_error_imap_str_15[] PROGMEM = "CONDSTORE was not supported or modsec was not supported for selected mailbox";
 static const char esp_mail_error_imap_str_17[] PROGMEM = "could not parse command";
-static const char esp_mail_error_imap_str_18[] PROGMEM = "server replied NO or BAD response";
+static const char esp_mail_error_imap_str_18[] PROGMEM = "server disconnected or returned error";
 static const char esp_mail_error_imap_str_19[] PROGMEM = "authenticate failed";
 static const char esp_mail_error_imap_str_20[] PROGMEM = "flags or keywords store failed";
 static const char esp_mail_error_imap_str_21[] PROGMEM = "server is not support OAuth2 login";

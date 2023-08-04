@@ -1,7 +1,7 @@
 /*
- * ESP32 TCP Client Library v2.0.11
+ * ESP32 TCP Client Library v2.0.14
  *
- * Created April 15, 2023
+ * Created August 3, 2023
  *
  * The MIT License (MIT)
  * Copyright (c) 2023 K. Suwatchai (Mobizt)
@@ -152,12 +152,17 @@ void ESP32_TCP_Client::setInsecure()
 
 bool ESP32_TCP_Client::ethLinkUp()
 {
-    if (strcmp(ETH.localIP().toString().c_str(), "0.0.0.0") != 0)
+    if (validIP(ETH.localIP()))
     {
         ETH.linkUp();
         return true;
     }
     return false;
+}
+
+bool ESP32_TCP_Client::validIP(IPAddress ip)
+{
+    return strcmp(ip.toString().c_str(), "0.0.0.0") != 0;
 }
 
 void ESP32_TCP_Client::ethDNSWorkAround()
@@ -173,7 +178,7 @@ bool ESP32_TCP_Client::networkReady()
 
     return networkStatus;
 #else
-    return WiFi.status() == WL_CONNECTED || ethLinkUp();
+    return (WiFi.status() == WL_CONNECTED && validIP(WiFi.localIP())) || ethLinkUp();
 #endif
 }
 
@@ -219,10 +224,10 @@ bool ESP32_TCP_Client::isInitialized()
 
     bool upgradeRequired = false;
 
-#if !defined(ESP_MAIL_USE_SDK_SSL_ENGINE)
+    // Changed since ESP_MAIL_USE_SDK_SSL_ENGINE flag is not applied in v3.3.0
+    // because the internal lwIP TCP client was used with mbedTLS instead of Client in earlier version.
     if (wcs->getProtocol(_port) == (int)esp_mail_protocol_tls && !connection_upgrade_cb)
         upgradeRequired = true;
-#endif
 
     if (!network_connection_cb || !network_status_cb || upgradeRequired)
     {
@@ -314,13 +319,27 @@ bool ESP32_TCP_Client::connect(bool secured, bool verify)
 
 #endif
 
-// internal client or external client with internal ssl engine
-#if !defined(ENABLE_CUSTOM_CLIENT) || defined(ESP_MAIL_USE_SDK_SSL_ENGINE)
-
-    // internal or external client with innternal ssl client
+    // Changed since ESP_MAIL_USE_SDK_SSL_ENGINE flag is not applied in v3.3.0
+    // because the internal lwIP TCP client was used with mbedTLS instead of Client in earlier version.
     if (!wcs->connect(_host.c_str(), _port))
         return false;
 
+#if !defined(ENABLE_CUSTOM_CLIENT)
+    if (wcs->isKeepAliveSet())
+    {
+        if (wcs->tcpKeepIdleSeconds == 0 || wcs->tcpKeepIntervalSeconds == 0 || wcs->tcpKeepCount == 0)
+        {
+            wcs->tcpKeepIdleSeconds = 0;
+            wcs->tcpKeepIntervalSeconds = 0;
+            wcs->tcpKeepCount = 0;
+        }
+
+        bool success = wcs->setOption(TCP_KEEPIDLE, &wcs->tcpKeepIdleSeconds) > -1 &&
+                       wcs->setOption(TCP_KEEPINTVL, &wcs->tcpKeepIntervalSeconds) > -1 &&
+                       wcs->setOption(TCP_KEEPCNT, &wcs->tcpKeepCount) > -1;
+        if (!success)
+            wcs->_isKeepAlive = false;
+    }
 #endif
 
     bool res = connected();
@@ -338,7 +357,9 @@ bool ESP32_TCP_Client::connectSSL(bool verify)
 
     bool res = false;
 
-#if defined(ENABLE_CUSTOM_CLIENT) && !defined(ESP_MAIL_USE_SDK_SSL_ENGINE)
+// Changed since ESP_MAIL_USE_SDK_SSL_ENGINE flag is not applied in v3.3.0
+// because the internal lwIP TCP client was used with mbedTLS instead of Client in earlier version.
+#if defined(ENABLE_CUSTOM_CLIENT)
 
     wcs->tls_required = true;
 

@@ -1,7 +1,7 @@
 /*
- * ESP32 WiFi Client Secure v2.0.3
+ * ESP32 WiFi Client Secure v2.0.10
  *
- * Created March 20, 2023
+ * Created July 28, 2023
  *
  * The MIT License (MIT)
  * Copyright (c) 2023 K. Suwatchai (Mobizt)
@@ -97,7 +97,9 @@ ESP32_WCS::~ESP32_WCS()
 
 void ESP32_WCS::setClient(Client *client)
 {
-#if defined(ESP_MAIL_USE_SDK_SSL_ENGINE)
+// Changed since ESP_MAIL_USE_SDK_SSL_ENGINE flag is not applied in v3.3.0
+// because the internal lwIP TCP client was used with mbedTLS instead of Client in earlier version.
+#if defined(ENABLE_CUSTOM_CLIENT)
     _ssl->client = client;
 #endif
 }
@@ -120,6 +122,11 @@ bool ESP32_WCS::begin(const char *host, uint16_t port)
 
 void ESP32_WCS::stop()
 {
+    if (_closed)
+        return;
+
+    _closed = true;
+
     _host.clear();
 
     if (!_use_external_sslclient)
@@ -163,6 +170,8 @@ int ESP32_WCS::connect(IPAddress ip, uint16_t port, const char *CA_cert, const c
 int ESP32_WCS::_connect(const char *host, uint16_t port)
 {
     prepareBasicClient();
+
+    _closed = false;
 
     if (!_ssl->client)
         return -1;
@@ -314,7 +323,15 @@ void ESP32_WCS::prepareBasicClient()
 #if !defined(ENABLE_CUSTOM_CLIENT)
     if (!_ssl->client && !_use_internal_basic_client)
     {
-        _client = new WiFiClient();
+#if defined(ESP_MAIL_ESP32_USE_WIFICLIENT_TEST) || defined(ESP_MAIL_ESP32_USE_WIFICLIENT_SOCKET_TEST)
+        WiFiClient *wc = new WiFiClient();
+        _client = wc;
+#if defined(ESP_MAIL_ESP32_USE_WIFICLIENT_SOCKET_TEST)
+        _ssl->wc = wc;
+#endif
+#else
+        _client = new basicClient(_ssl);
+#endif
         _ssl->client = _client;
         _use_internal_basic_client = true;
         _use_external_sslclient = false;
@@ -353,10 +370,7 @@ size_t ESP32_WCS::write(const uint8_t *buf, size_t size)
 
     int res = (!_secured || _use_external_sslclient) ? _ssl->client->write(buf, size) : send_ssl_data(_ssl, buf, size);
     if (res < 0)
-    {
-        stop();
         res = 0;
-    }
     return res;
 }
 
@@ -366,10 +380,6 @@ int ESP32_WCS::read(uint8_t *buf, size_t size)
         return 0;
 
     int res = (!_secured || _use_external_sslclient) ? _ssl->client->read(buf, size) : get_ssl_receive(_ssl, buf, size);
-
-    if (res < 0)
-        stop();
-
     return res;
 }
 
@@ -379,10 +389,6 @@ int ESP32_WCS::available()
         return 0;
 
     int res = (!_secured || _use_external_sslclient) ? _ssl->client->available() : data_to_read(_ssl);
-
-    if (res < 0)
-        stop();
-
     return res;
 }
 
@@ -390,7 +396,7 @@ bool ESP32_WCS::connected()
 {
 
     if (!_ssl->client)
-        return 0;
+        return false;
 
     return _ssl->client->connected();
 }

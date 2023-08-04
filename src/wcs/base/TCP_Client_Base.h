@@ -1,7 +1,7 @@
 /*
- * TCP Client Base class, version 2.0.5
+ * TCP Client Base class, version 2.0.7
  *
- * Created March 12, 2023
+ * Created June 25, 2023
  *
  * The MIT License (MIT)
  * Copyright (c) 2023 K. Suwatchai (Mobizt)
@@ -32,7 +32,6 @@
 #include "ESP_Mail_FS.h"
 #if defined(ENABLE_SMTP) || defined(ENABLE_IMAP)
 
-
 #if defined(ESP32) && !defined(ESP_ARDUINO_VERSION) /* ESP32 core < v2.0.x */
 #include <sys/time.h>
 #else
@@ -43,8 +42,6 @@
 #include <IPAddress.h>
 #include <Client.h>
 #include "./extras/MB_Time.h"
-
-#define TCP_CLIENT_DEFAULT_TCP_TIMEOUT_SEC 30
 
 typedef enum
 {
@@ -163,6 +160,28 @@ public:
         return ext_client_type;
     }
 
+#if !defined(ENABLE_CUSTOM_CLIENT)
+    void keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount)
+    {
+        this->tcpKeepIdleSeconds = tcpKeepIdleSeconds;
+        this->tcpKeepIntervalSeconds = tcpKeepIntervalSeconds;
+        this->tcpKeepCount = tcpKeepCount;
+        _isKeepAlive = tcpKeepIdleSeconds > 0 && tcpKeepIntervalSeconds > 0 && tcpKeepCount > 0;
+    }
+
+    bool isKeepAliveSet() { return tcpKeepIdleSeconds > -1 && tcpKeepIntervalSeconds > -1 && tcpKeepCount > -1; };
+#endif
+
+#if !defined(ENABLE_CUSTOM_CLIENT)
+    // lwIP TCP Keepalive idle in seconds.
+    int tcpKeepIdleSeconds = -1;
+    // lwIP TCP Keepalive interval in seconds.
+    int tcpKeepIntervalSeconds = -1;
+    // lwIP TCP Keepalive count.
+    int tcpKeepCount = -1;
+    bool _isKeepAlive = false;
+#endif
+
 private:
     void setMBFS(MB_FS *mbfs) { this->mbfs = mbfs; }
 #if defined(ENABLE_IMAP) || defined(ENABLE_SMTP)
@@ -185,6 +204,7 @@ protected:
     bool tls_required = false;
     bool tls_error = false;
     bool debugLevel = 0;
+
     esp_mail_cert_type certType = esp_mail_cert_type_undefined;
     esp_mail_external_client_type ext_client_type = esp_mail_external_client_type_basic;
 #if defined(ENABLE_IMAP) || defined(ENABLE_SMTP)

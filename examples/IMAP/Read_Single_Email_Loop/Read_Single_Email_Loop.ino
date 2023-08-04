@@ -116,9 +116,7 @@ int sign = -1;
 /* Declare the global used Session_Config for user defined session credentials */
 Session_Config config;
 
-/** Declare the global used IMAP_Data object used for user defined IMAP operating options
- * and contains the IMAP operating result
- */
+/* Define the IMAP_Data object used for user defined IMAP operating options. */
 IMAP_Data imap_data;
 
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
@@ -152,7 +150,7 @@ void setup()
 #endif
 
     Serial.print("Connecting to Wi-Fi");
-        
+
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
     unsigned long ms = millis();
 #endif
@@ -232,7 +230,7 @@ void setup()
      */
     imap_data.storage.type = esp_mail_file_storage_type_sd;
 
-    /** Set to download heades, text and html messaeges,
+    /** Set to download headers, text and html messaeges,
      * attachments and inline images respectively.
      */
     imap_data.download.header = false;
@@ -281,6 +279,9 @@ void setup()
 
     // imap_data.identification.name = "User";
     // imap_data.identification.version = "1.0";
+
+    /* Set the TCP response read timeout in seconds */
+    // imap.setTCPTimeout(10);
 
     /* Connect to the server */
     if (!imap.connect(&config, &imap_data))
@@ -374,6 +375,9 @@ void loop()
         /* Set seen flag */
         // imap_data.fetch.set_seen = true;
 
+        /* Fetch or read only message header */
+        // imap_data.fetch.headerOnly = true;
+
         /** Read or search the Email and keep the TCP session to open
          * The second parameter is for close the session.
          */
@@ -381,7 +385,8 @@ void loop()
         // When message was fetched or read, the /Seen flag will not set or message remained in unseen or unread status,
         // as this is the purpose of library (not UI application), user can set the message status as read by set \Seen flag
         // to message, see the Set_Flags.ino example.
-        MailClient.readMail(&imap, false);
+        if (MailClient.readMail(&imap, false))
+            msgNum += sign;
 
         /* Clear all stored data in IMAPSession object */
         imap.empty();
@@ -438,9 +443,13 @@ void printSelectedMailboxInfo(SelectedFolderInfo sFolder)
     ESP_MAIL_PRINTF("\nInfo of the selected folder\nTotal Messages: %d\n", sFolder.msgCount());
     ESP_MAIL_PRINTF("UID Validity: %d\n", sFolder.uidValidity());
     ESP_MAIL_PRINTF("Predicted next UID: %d\n", sFolder.nextUID());
-    ESP_MAIL_PRINTF("Unseen Message Index: %d\n", sFolder.unseenIndex());
+    if (sFolder.unseenIndex() > 0)
+        ESP_MAIL_PRINTF("First Unseen Message Number: %d\n", sFolder.unseenIndex());
+    else
+        ESP_MAIL_PRINTF("Unseen Messages: No\n");
+
     if (sFolder.modSeqSupported())
-        ESP_MAIL_PRINTF("Highest Modification Sequence: %d\n", sFolder.highestModSeq());
+        ESP_MAIL_PRINTF("Highest Modification Sequence: %llu\n", sFolder.highestModSeq());
     for (size_t i = 0; i < sFolder.flagCount(); i++)
         ESP_MAIL_PRINTF("%s%s%s", i == 0 ? "Flags: " : ", ", sFolder.flag(i).c_str(), i == sFolder.flagCount() - 1 ? "\n" : "");
 
@@ -485,14 +494,15 @@ void printMessages(MB_VECTOR<IMAP_MSG_Item> &msgItems, bool headerOnly)
         Serial.println("****************************");
         ESP_MAIL_PRINTF("Number: %d\n", msg.msgNo);
         ESP_MAIL_PRINTF("UID: %d\n", msg.UID);
-        ESP_MAIL_PRINTF("Messsage-ID: %s\n", msg.ID);
-
-        ESP_MAIL_PRINTF("Flags: %s\n", msg.flags);
 
         // The attachment status in search may be true in case the "multipart/mixed"
         // content type header was set with no real attachtment included.
         ESP_MAIL_PRINTF("Attachment: %s\n", msg.hasAttachment ? "yes" : "no");
 
+        ESP_MAIL_PRINTF("Messsage-ID: %s\n", msg.ID);
+
+        if (strlen(msg.flags))
+            ESP_MAIL_PRINTF("Flags: %s\n", msg.flags);
         if (strlen(msg.acceptLang))
             ESP_MAIL_PRINTF("Accept Language: %s\n", msg.acceptLang);
         if (strlen(msg.contentLang))

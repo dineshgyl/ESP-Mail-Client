@@ -76,7 +76,7 @@ void setup()
 #endif
 
     Serial.print("Connecting to Wi-Fi");
-        
+
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
     unsigned long ms = millis();
 #endif
@@ -139,6 +139,8 @@ void setup()
     imap_data.limit.msg_size = 512;
 
     imap_data.limit.attachment_size = 1024 * 1024 * 5;
+
+    imap.setTCPTimeout(10);
 
     if (!imap.connect(&config, &imap_data))
     {
@@ -213,9 +215,13 @@ void printSelectedMailboxInfo(SelectedFolderInfo sFolder)
     ESP_MAIL_PRINTF("\nInfo of the selected folder\nTotal Messages: %d\n", sFolder.msgCount());
     ESP_MAIL_PRINTF("UID Validity: %d\n", sFolder.uidValidity());
     ESP_MAIL_PRINTF("Predicted next UID: %d\n", sFolder.nextUID());
-    ESP_MAIL_PRINTF("Unseen Message Index: %d\n", sFolder.unseenIndex());
+    if (sFolder.unseenIndex() > 0)
+        ESP_MAIL_PRINTF("First Unseen Message Number: %d\n", sFolder.unseenIndex());
+    else
+        ESP_MAIL_PRINTF("Unseen Messages: No\n");
+
     if (sFolder.modSeqSupported())
-        ESP_MAIL_PRINTF("Highest Modification Sequence: %d\n", sFolder.highestModSeq());
+        ESP_MAIL_PRINTF("Highest Modification Sequence: %llu\n", sFolder.highestModSeq());
     for (size_t i = 0; i < sFolder.flagCount(); i++)
         ESP_MAIL_PRINTF("%s%s%s", i == 0 ? "Flags: " : ", ", sFolder.flag(i).c_str(), i == sFolder.flagCount() - 1 ? "\n" : "");
 
@@ -248,10 +254,15 @@ void printMessages(MB_VECTOR<IMAP_MSG_Item> &msgItems, bool headerOnly)
 
         ESP_MAIL_PRINTF("Number: %d\n", msg.msgNo);
         ESP_MAIL_PRINTF("UID: %d\n", msg.UID);
-        ESP_MAIL_PRINTF("Messsage-ID: %s\n", msg.ID);
-        ESP_MAIL_PRINTF("Flags: %s\n", msg.flags);
+
+        // The attachment status in search may be true in case the "multipart/mixed"
+        // content type header was set with no real attachtment included.
         ESP_MAIL_PRINTF("Attachment: %s\n", msg.hasAttachment ? "yes" : "no");
 
+        ESP_MAIL_PRINTF("Messsage-ID: %s\n", msg.ID);
+
+        if (strlen(msg.flags))
+            ESP_MAIL_PRINTF("Flags: %s\n", msg.flags);
         if (strlen(msg.acceptLang))
             ESP_MAIL_PRINTF("Accept Language: %s\n", msg.acceptLang);
         if (strlen(msg.contentLang))

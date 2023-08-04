@@ -171,9 +171,7 @@ void setup()
     config.login.email = AUTHOR_EMAIL;
     config.login.password = AUTHOR_PASSWORD;
 
-    /** Declare the IMAP_Data object used for user defined IMAP operating options
-     * and contains the IMAP operating result
-     */
+    /* Define the IMAP_Data object used for user defined IMAP operating options. */
     IMAP_Data imap_data;
 
     /* Set the storage to save the downloaded files and attachments */
@@ -186,7 +184,7 @@ void setup()
      */
     imap_data.storage.type = esp_mail_file_storage_type_sd;
 
-    /** Set to download heades, text and html messaeges,
+    /** Set to download headers, text and html messaeges,
      * attachments and inline images respectively.
      */
     imap_data.download.header = true;

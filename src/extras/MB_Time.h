@@ -2,7 +2,7 @@
 #define MB_Time_H
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30110)
+#if !VALID_VERSION_CHECK(30307)
 #error "Mixed versions compilation."
 #endif
 
@@ -67,6 +67,16 @@
 #if defined(ENABLE_NTP_TIME)
 #include <WiFiNTP.h>
 #endif
+#endif
+
+#if defined __has_include
+#if __has_include(<WiFiNINA.h>)|| __has_include(<WiFi101.h>)
+#define MB_TIME_ARDUINO_WIFI_LIB_SUPPORTED
+#endif
+#endif
+
+#if defined(ESP8266)
+#include "user_interface.h"
 #endif
 
 #if defined(ENABLE_NTP_TIME)
@@ -159,7 +169,7 @@ public:
     if (TZ != gmtOffset || DST_MN != daylightOffset)
       configUpdated = true;
 
-#if (defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_SAMD_MKR1000)) || defined(MB_ARDUINO_NANO_RP2040_CONNECT)
+#if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_SAMD_MKR1000) || defined(MB_ARDUINO_NANO_RP2040_CONNECT)
 
 #elif defined(MB_ARDUINO_ESP) || defined(MB_ARDUINO_PICO)
     sys_ts = time(nullptr);
@@ -393,6 +403,20 @@ public:
     return tbuf;
   }
 
+  void syncSysTeme()
+  {
+    getTime();
+
+#if defined(ESP32) || defined(ESP8266) || defined(MB_ARDUINO_PICO)
+    if (sys_ts < time(nullptr) && time(nullptr) > ESP_TIME_DEFAULT_TS)
+    {
+      sys_ts = time(nullptr);
+      configUpdated = true;
+      _clockReady = true;
+    }
+#endif
+  }
+
   /** get the clock ready state
    *  Do not remove or modify this file as it required for AVR, ARM,
    * SAMD devices and external client to work.
@@ -401,13 +425,19 @@ public:
   {
     uint32_t ts = 0;
 
+    syncSysTeme();
+
+    if (sys_ts < ESP_TIME_DEFAULT_TS)
+    {
+
 #if defined(ENABLE_NTP_TIME)
-    ts = udp ? ntp.getTime(wait_ms /* wait 10000 ms */) : 0;
-    if (ts > 0)
-      ts_offset = ts - millis() / 1000;
+      ts = udp ? ntp.getTime(wait_ms /* wait 10000 ms */) : 0;
+      if (ts > 0)
+        ts_offset = ts - millis() / 1000;
 #endif
 
-    getTime(ts);
+      getTime(ts);
+    }
 
     _clockReady = sys_ts > ESP_TIME_DEFAULT_TS;
 
@@ -474,9 +504,15 @@ private:
   void getTime(uint32_t ctime = 0)
   {
 
-#if (defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_SAMD_MKR1000)) || defined(MB_ARDUINO_NANO_RP2040_CONNECT)
+#if defined(MB_TIME_ARDUINO_WIFI_LIB_SUPPORTED)
 
     unsigned long ts = WiFi.getTime();
+    unsigned long ms = millis();
+    while (millis() - ms < 3000 && ts < ESP_TIME_DEFAULT_TS)
+    {
+      delay(10);
+    }
+
     if (ts > 0)
       sys_ts = ts;
 
@@ -491,11 +527,14 @@ private:
       sys_ts = time(nullptr);
     localtime_r(&sys_ts, &timeinfo);
 #endif
+
 #else
 
 #if defined(MB_ARDUINO_ESP)
     sys_ts = ctime == 0 ? time(nullptr) : ctime;
 #endif
+
+#if defined(ESP32) || defined(ESP8266)
 
     if (ctime == 0 && time(nullptr) > ESP_TIME_DEFAULT_TS)
     {
@@ -505,6 +544,8 @@ private:
       localtime_r(&sys_ts, &timeinfo);
 #endif
     }
+
+#endif
 
 #endif
 

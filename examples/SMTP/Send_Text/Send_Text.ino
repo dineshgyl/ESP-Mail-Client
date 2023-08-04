@@ -113,9 +113,9 @@ void setup()
 #endif
 
   Serial.print("Connecting to Wi-Fi");
-      
+
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
-    unsigned long ms = millis();
+  unsigned long ms = millis();
 #endif
 
   while (WiFi.status() != WL_CONNECTED)
@@ -216,6 +216,14 @@ void setup()
   /* Set the message headers */
   message.sender.name = F("ESP Mail");
   message.sender.email = AUTHOR_EMAIL;
+
+  /** If author and sender are not identical
+  message.sender.name = F("Sender");
+  message.sender.email = "sender@mail.com";
+  message.author.name = F("ESP Mail");
+  message.author.email = AUTHOR_EMAIL; // should be the same email as config.login.email
+ */
+
   message.subject = F("Test sending plain text Email");
   message.addRecipient(F("Someone"), RECIPIENT_EMAIL);
 
@@ -294,9 +302,12 @@ void setup()
 
   // Library will be trying to sync the time with NTP server if time is never sync or set.
   // This is 10 seconds blocking process.
-  // If time synching was timed out, the error "NTP server time synching timed out" will show via debug and callback function.
+  // If time reading was timed out, the error "NTP server time reading timed out" will show via debug and callback function.
   // You can manually sync time by yourself with NTP library or calling configTime in ESP32 and ESP8266.
   // Time can be set manually with provided timestamp to function smtp.setSystemTime.
+
+  /* Set the TCP response read timeout in seconds */
+  // smtp.setTCPTimeout(10);
 
   /* Connect to the server */
   if (!smtp.connect(&config))
@@ -365,7 +376,7 @@ void smtpCallback(SMTP_Status status)
       // your device time was synched with NTP server.
       // Other devices may show invalid timestamp as the device time was not set i.e. it will show Jan 1, 1970.
       // You can call smtp.setSystemTime(xxx) to set device time manually. Where xxx is timestamp (seconds since Jan 1, 1970)
-      
+
       ESP_MAIL_PRINTF("Message No: %d\n", i + 1);
       ESP_MAIL_PRINTF("Status: %s\n", result.completed ? "success" : "failed");
       ESP_MAIL_PRINTF("Date/Time: %s\n", MailClient.Time.getDateTimeString(result.timestamp, "%B %d, %Y %H:%M:%S").c_str());

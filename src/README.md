@@ -366,6 +366,18 @@ This class used for controlling IMAP transports and retrieving the data from the
 
 
 
+
+#### Set the tcp timeout.
+
+param **`timeoutSec`** The tcp timeout in seconds.
+
+```cpp
+void setTCPTimeout(unsigned long timeoutSec);
+```
+
+
+
+
 #### Assign custom Client from Arduino Clients.
 
 param **`client`** The pointer to Arduino Client derived class e.g. WiFiClient, WiFiClientSecure, EthernetClient or GSMClient.
@@ -537,6 +549,34 @@ return **`boolean`** The boolean value which indicates the success of operation.
 bool closeSession();
 ```
 
+
+#### Setup TCP KeepAlive for internal TCP client.
+
+param **`tcpKeepIdleSeconds`** lwIP TCP Keepalive idle in seconds.
+
+param **`tcpKeepIntervalSeconds`** lwIP TCP Keepalive interval in seconds.
+
+param **`tcpKeepCount`** lwIP TCP Keepalive count.
+
+For the TCP (KeepAlive) options, see [this doc](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/lwip.html#tcp-options).
+
+If value of one of these parameters is zero, the TCP KeepAlive will be disabled.
+
+You can check the server connecting status, by exexuting `<IMAPSession>.connected()` which will return true when connection to the server is still alive. 
+
+```cpp
+void keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount);
+```
+
+
+
+#### Get TCP KeepAlive status.
+
+return **`Boolean`** status of TCP Keepalive.
+
+```cpp
+bool isKeepAlive();
+```
 
 
 
@@ -1266,6 +1306,17 @@ and retrieving the data from the SMTP server.
 
 
 
+#### Set the tcp timeout.
+
+param **`timeoutSec`** The tcp timeout in seconds.
+
+```cpp
+void setTCPTimeout(unsigned long timeoutSec);
+```
+
+
+
+
 #### Assign custom Client from Arduino Clients.
 
 param **`client`** The pointer to Arduino Client derived class e.g. WiFiClient, WiFiClientSecure, EthernetClient or GSMClient.
@@ -1402,6 +1453,36 @@ bool isLoggedIn();
 
 ```cpp
 bool closeSession();
+```
+
+
+
+#### Setup TCP KeepAlive for internal TCP client.
+
+param **`tcpKeepIdleSeconds`** lwIP TCP Keepalive idle in seconds.
+
+param **`tcpKeepIntervalSeconds`** lwIP TCP Keepalive interval in seconds.
+
+param **`tcpKeepCount`** lwIP TCP Keepalive count.
+
+For the TCP (KeepAlive) options, see [this doc](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/lwip.html#tcp-options).
+
+If value of one of these parameters is zero, the TCP KeepAlive will be disabled.
+
+You can check the server connecting status, by exexuting `<SMTPSession>.connected()` which will return true when connection to the server is still alive. 
+
+```cpp
+void keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount);
+```
+
+
+
+#### Get TCP KeepAlive status.
+
+return **`Boolean`** status of TCP Keepalive.
+
+```cpp
+bool isKeepAlive();
 ```
 
 

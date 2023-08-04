@@ -3,14 +3,14 @@
 #define ESP_MAIL_SMTP_H
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30110)
+#if !VALID_VERSION_CHECK(30307)
 #error "Mixed versions compilation."
 #endif
 
 /**
  * Mail Client Arduino Library for Espressif's ESP32 and ESP8266, Raspberry Pi RP2040 Pico, and SAMD21 with u-blox NINA-W102 WiFi/Bluetooth module
  *
- * Created April 15, 2023
+ * Created July 25, 2023
  *
  * This library allows Espressif's ESP32, ESP8266, SAMD and RP2040 Pico devices to send and read Email through the SMTP and IMAP servers.
  *
@@ -195,7 +195,7 @@ initial_stage:
                 return handleSMTPError(smtp, SMTP_STATUS_SERVER_OAUTH2_LOGIN_DISABLED, false);
 
             MB_String cmd = smtp_cmd_post_tokens[esp_mail_smtp_command_auth];
-            cmd += smtp_auth_cap_pre_tokens[esp_mail_auth_capability_xoauth2];
+            cmd += smtp_auth_cap_post_tokens[esp_mail_auth_capability_xoauth2];
 
             if (smtpSend(smtp, cmd.c_str(), false) == ESP_MAIL_CLIENT_TRANSFER_DATA_FAILED)
                 return false;
@@ -431,7 +431,7 @@ bool ESP_Mail_Client::mSendMail(SMTPSession *smtp, SMTP_Message *msg, bool close
     smtp->_chunkedEnable = false;
     smtp->_chunkCount = 0;
 
-    if (!smtp->_tcpConnected && !smtp->_loginStatus)
+    if (!smtp->connected() && !smtp->_loginStatus)
     {
 #if !defined(SILENT_MODE)
         if (smtp->_debug && smtp->_sendCallback && !smtp->_customCmdResCallback)
@@ -444,7 +444,7 @@ bool ESP_Mail_Client::mSendMail(SMTPSession *smtp, SMTP_Message *msg, bool close
     }
 
     // new session
-    if (!smtp->_tcpConnected)
+    if (!smtp->connected())
     {
         bool ssl = false;
 
@@ -538,13 +538,16 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
         }
     }
 
-    // Construct 'From' header field.
-    appendHeaderName(buf2, rfc822_headers[esp_mail_rfc822_header_field_from].text);
-
-    if (msg->sender.name.length() > 0)
-        appendString(buf2, msg->sender.name.c_str(), false, false, esp_mail_string_mark_type_double_quote);
-
-    appendString(buf2, msg->sender.email.c_str(), false, true, esp_mail_string_mark_type_angle_bracket);
+    // If author and transmitter (sender or agent) are not identical, send both 'From' and 'Sender' headers
+    if (msg->sender.email.length() > 0 && msg->author.email.length() > 0 &&
+        strcmp(msg->sender.email.c_str(), msg->author.email.c_str()) != 0)
+    {
+        appendAddressHeaderField(buf2, msg->author, esp_mail_rfc822_header_field_from, true, false, true);
+        appendAddressHeaderField(buf2, msg->sender, esp_mail_rfc822_header_field_sender, true, false, true);
+    }
+    // If author and transmitter (agent) are identical, send only 'From' header
+    else if (msg->sender.email.length() > 0)
+        appendAddressHeaderField(buf2, msg->sender, esp_mail_rfc822_header_field_from, true, false, true);
 
     if (!imap && smtp)
     {
@@ -552,7 +555,7 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
         buf = smtp_cmd_post_tokens[esp_mail_smtp_command_mail];
         buf += smtp_commands[esp_mail_smtp_command_from].text;
 
-        appendString(buf, msg->sender.email.c_str(), false, false, esp_mail_string_mark_type_angle_bracket);
+        appendString(buf, msg->author.email.length() ? msg->author.email.c_str() : msg->sender.email.c_str(), false, false, esp_mail_string_mark_type_angle_bracket);
 
         if (msg->text._int.xencoding == esp_mail_msg_xencoding_binary || msg->html._int.xencoding == esp_mail_msg_xencoding_binary)
         {
@@ -584,17 +587,9 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
 
     for (uint8_t i = 0; i < msg->_rcp.size(); i++)
     {
-        if (i == 0)
-            appendHeaderName(buf2, rfc822_headers[esp_mail_rfc822_header_field_to].text);
-
-        if (msg->_rcp[i].name.length() > 0)
-            appendString(buf2, msg->_rcp[i].name.c_str(), i > 0, false, esp_mail_string_mark_type_double_quote);
-
-        appendString(buf2, msg->_rcp[i].email.c_str(), i > 0, i == msg->_rcp.size() - 1, esp_mail_string_mark_type_angle_bracket);
-
+        appendAddressHeaderField(buf2, msg->_rcp[i], esp_mail_rfc822_header_field_to, i == 0, i > 0, i == msg->_rcp.size() - 1);
         if (!imap && smtp)
         {
-
             // only address
             buf = smtp_cmd_post_tokens[esp_mail_smtp_command_rcpt];
             buf += smtp_commands[esp_mail_smtp_command_to].text;
@@ -642,11 +637,7 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
     // Construct 'Cc' header field.
     for (uint8_t i = 0; i < msg->_cc.size(); i++)
     {
-        if (i == 0)
-            appendHeaderName(buf2, rfc822_headers[esp_mail_rfc822_header_field_cc].text);
-
-        appendString(buf2, msg->_cc[i].email.c_str(), i > 0, i == msg->_cc.size() - 1, esp_mail_string_mark_type_angle_bracket);
-
+        appendAddressHeaderField(buf2, msg->_cc[i], esp_mail_rfc822_header_field_cc, i == 0, i > 0, i == msg->_cc.size() - 1);
         if (!imap)
         {
             // only address
@@ -988,26 +979,12 @@ void ESP_Mail_Client::getRFC822MsgEnvelope(SMTPSession *smtp, SMTP_Message *msg,
     }
 
     // Construct 'From' header field.
-
     if (msg->from.email.length() > 0)
-    {
-        appendHeaderName(buf, rfc822_headers[esp_mail_rfc822_header_field_from].text);
-
-        if (msg->from.name.length() > 0)
-            appendString(buf, msg->from.name.c_str(), false, false, esp_mail_string_mark_type_double_quote);
-
-        appendString(buf, msg->from.email.c_str(), false, true, esp_mail_string_mark_type_angle_bracket);
-    }
+        appendAddressHeaderField(buf, msg->from, esp_mail_rfc822_header_field_from, true, false, true);
 
     // Construct 'Sender' header field.
     if (msg->sender.email.length() > 0)
-    {
-        appendHeaderName(buf, rfc822_headers[esp_mail_rfc822_header_field_sender].text);
-        if (msg->sender.name.length() > 0)
-            appendString(buf, msg->sender.name.c_str(), false, false, esp_mail_string_mark_type_double_quote);
-
-        appendString(buf, msg->sender.email.c_str(), false, true, esp_mail_string_mark_type_angle_bracket);
-    }
+        appendAddressHeaderField(buf, msg->sender, esp_mail_rfc822_header_field_sender, true, false, true);
 
     if (msg->response.reply_to.length() > 0)
         appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_reply_to].text, msg->response.reply_to.c_str(), false, true, esp_mail_string_mark_type_angle_bracket);
@@ -1016,31 +993,14 @@ void ESP_Mail_Client::getRFC822MsgEnvelope(SMTPSession *smtp, SMTP_Message *msg,
         appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_return_path].text, msg->response.return_path.c_str(), false, true, esp_mail_string_mark_type_angle_bracket);
 
     // Construct 'To' header field.
-
     for (uint8_t i = 0; i < msg->_rcp.size(); i++)
-    {
-        if (i == 0)
-            appendHeaderName(buf, rfc822_headers[esp_mail_rfc822_header_field_to].text);
-
-        if (msg->_rcp[i].name.length() > 0)
-            appendString(buf, msg->_rcp[i].name.c_str(), i > 0, false, esp_mail_string_mark_type_double_quote);
-
-        appendString(buf, msg->_rcp[i].email.c_str(), i > 0, i == msg->_rcp.size() - 1, esp_mail_string_mark_type_angle_bracket);
-    }
+        appendAddressHeaderField(buf, msg->_rcp[i], esp_mail_rfc822_header_field_to, i == 0, i > 0, i == msg->_rcp.size() - 1);
 
     for (uint8_t i = 0; i < msg->_cc.size(); i++)
-    {
-        if (i == 0)
-            appendHeaderName(buf, rfc822_headers[esp_mail_rfc822_header_field_cc].text);
-        appendString(buf, msg->_cc[i].email.c_str(), i > 0, i == msg->_cc.size() - 1, esp_mail_string_mark_type_angle_bracket);
-    }
+        appendAddressHeaderField(buf, msg->_cc[i], esp_mail_rfc822_header_field_cc, i == 0, i > 0, i == msg->_cc.size() - 1);
 
     for (uint8_t i = 0; i < msg->_bcc.size(); i++)
-    {
-        if (i == 0)
-            appendHeaderName(buf, rfc822_headers[esp_mail_rfc822_header_field_bcc].text);
-        appendString(buf, msg->_bcc[i].email.c_str(), i > 0, i == msg->_bcc.size() - 1, esp_mail_string_mark_type_angle_bracket);
-    }
+        appendAddressHeaderField(buf, msg->_bcc[i], esp_mail_rfc822_header_field_bcc, i == 0, i > 0, i == msg->_bcc.size() - 1);
 
     if (msg->subject.length() > 0)
         appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_subject].text, msg->subject.c_str(), false, true);
@@ -1454,10 +1414,7 @@ void ESP_Mail_Client::altSendStorageErrorCB(SMTPSession *smtp, int err)
             esp_mail_debug_print_tag(esp_mail_error_mem_str_3 /* "file does not exist or can't access" */, esp_mail_debug_tag_type_client, true);
 
         if (smtp->_debug)
-        {
-
             esp_mail_debug_print_tag(smtp->errorReason().c_str(), esp_mail_debug_tag_type_error, true);
-        }
 #endif
     }
     else if (imap && !calDataLen)
@@ -1566,7 +1523,7 @@ void ESP_Mail_Client::sendStorageNotReadyError(SMTPSession *smtp, esp_mail_file_
         {
             esp_mail_debug_print_tag(esp_mail_error_mem_str_1 /* "flash Storage is not ready." */, esp_mail_debug_tag_type_error, true);
 #if defined(MB_ARDUINO_PICO)
-            esp_mail_debug_print_tag(esp_mail_error_mem_str_9 /* "please make sure that the size of flash filesystem is not 0 in Pico." */, esp_mail_debug_tag_type_error, true);
+            esp_mail_debug_print_tag(esp_mail_error_mem_str_10 /* "please make sure that the size of flash filesystem is not 0 in Pico." */, esp_mail_debug_tag_type_error, true);
 #endif
         }
         else if (storageType == esp_mail_file_storage_type_sd)
@@ -1579,7 +1536,7 @@ void ESP_Mail_Client::sendStorageNotReadyError(SMTPSession *smtp, esp_mail_file_
         {
             esp_mail_debug_print_tag(esp_mail_error_mem_str_1 /* "flash Storage is not ready." */, esp_mail_debug_tag_type_error, true);
 #if defined(MB_ARDUINO_PICO)
-            esp_mail_debug_print_tag(esp_mail_error_mem_str_9 /* "please make sure that the size of flash filesystem is not 0 in Pico." */, esp_mail_debug_tag_type_error, true);
+            esp_mail_debug_print_tag(esp_mail_error_mem_str_10 /* "please make sure that the size of flash filesystem is not 0 in Pico." */, esp_mail_debug_tag_type_error, true);
 #endif
         }
         else if (storageType == esp_mail_file_storage_type_sd)
@@ -1814,13 +1771,12 @@ bool ESP_Mail_Client::handleSMTPError(SMTPSession *smtp, int err, bool ret)
 
     if (smtp)
     {
-        if (smtp->_tcpConnected)
-            closeTCPSession((void *)smtp, true);
+        closeTCPSession((void *)smtp, true);
     }
     else if (imap && !calDataLen)
     {
 #if defined(ENABLE_IMAP)
-        if (imap->_tcpConnected)
+        if (imap->connected())
             closeTCPSession((void *)imap, false);
 #endif
     }
@@ -1840,17 +1796,15 @@ bool ESP_Mail_Client::sendPartText(SMTPSession *smtp, SMTP_Message *msg, uint8_t
         if (msg->text.content_type.length() > 0)
         {
             appendHeaderField(header, message_headers[esp_mail_message_header_field_content_type].text, msg->text.content_type.c_str(), false, false);
+
             bool firstProp = true;
+
             if (msg->text.charSet.length() > 0)
-            {
                 appendHeaderProp(header, message_headers[esp_mail_message_header_field_charset].text, msg->text.charSet.c_str(), firstProp, true, true, false);
-                firstProp = false;
-            }
 
             if (msg->text.flowed)
             {
                 appendHeaderProp(header, message_headers[esp_mail_message_header_field_format].text, "flowed", firstProp, true, true, false);
-                firstProp = false;
                 appendHeaderProp(header, message_headers[esp_mail_message_header_field_delsp].text, "no", firstProp, true, true, false);
             }
 
@@ -1875,11 +1829,9 @@ bool ESP_Mail_Client::sendPartText(SMTPSession *smtp, SMTP_Message *msg, uint8_t
         {
             appendHeaderField(header, message_headers[esp_mail_message_header_field_content_type].text, msg->html.content_type.c_str(), false, false);
             bool firstProp = true;
+
             if (msg->html.charSet.length() > 0)
-            {
                 appendHeaderProp(header, message_headers[esp_mail_message_header_field_charset].text, msg->html.charSet.c_str(), firstProp, true, true, false);
-                firstProp = false;
-            }
 
             if (msg->html.embed.enable)
             {
@@ -2543,6 +2495,15 @@ bool ESP_Mail_Client::sendMSG(SMTPSession *smtp, SMTP_Message *msg, const MB_Str
 
             if (!sendPartText(smtp, msg, esp_mail_msg_type_html, boundary.c_str()))
                 return false;
+
+            s.clear();
+            appendBoundaryString(s, boundary.c_str(), true, false);
+
+            if (!sendBDAT(smtp, msg, s.length(), false))
+                return false;
+
+            if (!altSendData(s, false, smtp, msg, true, false, esp_mail_smtp_cmd_undefined, esp_mail_smtp_status_code_0, SMTP_STATUS_UNDEFINED))
+                return false;
         }
     }
     return true;
@@ -2572,14 +2533,18 @@ void ESP_Mail_Client::getAttachHeader(MB_String &header, const MB_String &bounda
     if (found != MB_String::npos)
         filename = filename.substr(found + 1);
 
-    appendHeaderProp(header, message_headers[esp_mail_message_header_field_name].text, filename.c_str(), true, false, true, true);
+    bool firstProp = true;
+
+    appendHeaderProp(header, message_headers[esp_mail_message_header_field_name].text, filename.c_str(), firstProp, false, true, true);
 
     if (isInline || (!isInline && !attach->_int.parallel))
     {
         appendHeaderName(header, message_headers[esp_mail_message_header_field_content_disposition].text);
         appendString(header, isInline ? esp_mail_content_disposition_type_t::inline_ : esp_mail_content_disposition_type_t::attachment, false, false);
-        appendHeaderProp(header, message_headers[esp_mail_message_header_field_filename].text, filename.c_str(), true, true, true, false);
-        appendHeaderProp(header, message_headers[esp_mail_message_header_field_size].text, MB_String((int)size).c_str(), false, true, false, true);
+
+        firstProp = true;
+        appendHeaderProp(header, message_headers[esp_mail_message_header_field_filename].text, filename.c_str(), firstProp, true, true, false);
+        appendHeaderProp(header, message_headers[esp_mail_message_header_field_size].text, MB_String((int)size).c_str(), firstProp, true, false, true);
     }
 
     if (isInline)
@@ -2748,7 +2713,7 @@ bool ESP_Mail_Client::handleSMTPResponse(SMTPSession *smtp, esp_mail_smtp_comman
     int readLen = 0;
     long dataTime = millis();
     int chunkBufSize = 0;
-    MB_String s, r;
+    MB_String s, r, err;
     int chunkIndex = 0;
     int count = 0;
     bool completedResponse = false;
@@ -2765,7 +2730,7 @@ bool ESP_Mail_Client::handleSMTPResponse(SMTPSession *smtp, esp_mail_smtp_comman
 
     chunkBufSize = smtp->client.available();
 
-    while (smtp->_tcpConnected && chunkBufSize <= 0)
+    while (smtp->connected() && chunkBufSize <= 0)
     {
         if (!reconnect(smtp, dataTime))
             return false;
@@ -2811,7 +2776,23 @@ bool ESP_Mail_Client::handleSMTPResponse(SMTPSession *smtp, esp_mail_smtp_comman
 
             read_line:
 
-                readLen = readLine(&(smtp->client), response, chunkBufSize, false, count);
+                MB_String ovfBuf;
+                if (!readResponse((void *)(smtp), true, response, chunkBufSize, readLen, false, count, ovfBuf))
+                {
+                    closeTCPSession((void *)smtp, true);
+                    errorStatusCB(smtp, MAIL_CLIENT_ERROR_READ_TIMEOUT);
+                    return false;
+                }
+
+                // If buffer overflown, copy from overflow buffer
+                if (ovfBuf.length() > 0)
+                {
+                    // release memory
+                    freeMem(&response);
+                    response = allocMem<char *>(ovfBuf.length() + 1);
+                    strcpy(response, ovfBuf.c_str());
+                    ovfBuf.clear();
+                }
 
                 if (readLen)
                 {
@@ -2903,7 +2884,10 @@ bool ESP_Mail_Client::handleSMTPResponse(SMTPSession *smtp, esp_mail_smtp_comman
                                     size_t olen = 0;
                                     char *decoded = (char *)decodeBase64((const unsigned char *)status.text.c_str(), status.text.length(), &olen);
                                     if (decoded && olen > 0)
+                                    {
                                         s.append(decoded, olen);
+                                        err = decoded;
+                                    }
 
                                     // release memory
                                     freeMem(&decoded);
@@ -2929,6 +2913,7 @@ bool ESP_Mail_Client::handleSMTPResponse(SMTPSession *smtp, esp_mail_smtp_comman
                     {
                         if (isOAuthError(response, readLen, chunkIndex, 4))
                         {
+                            smtp->_smtpStatus.text = err;
                             smtp->_smtpStatus.errorCode = SMTP_STATUS_XOAUTH2_AUTH_FAILED;
                             ret = false;
                         }
@@ -3017,12 +3002,11 @@ bool ESP_Mail_Client::reconnect(SMTPSession *smtp, unsigned long dataTime)
 
     if (!networkStatus)
     {
-        if (smtp->_tcpConnected)
-            closeTCPSession((void *)smtp, true);
+        closeTCPSession((void *)smtp, true);
 
         errorStatusCB(smtp, MAIL_CLIENT_ERROR_CONNECTION_CLOSED);
 
-        if (millis() - _lastReconnectMillis > _reconnectTimeout && !smtp->_tcpConnected)
+        if (millis() - _lastReconnectMillis > _reconnectTimeout && !smtp->connected())
         {
             if (smtp->_session_cfg->network_connection_handler)
             {
@@ -3407,8 +3391,12 @@ bool SMTPSession::handleConnection(Session_Config *session_config, bool &ssl)
             return MailClient.handleSMTPError(this, TCP_CLIENT_ERROR_NOT_INITIALIZED);
     }
 
-    if (_tcpConnected)
-        MailClient.closeTCPSession((void *)this, true);
+    // Resources are also released if network disconnected.
+    if (!MailClient.reconnect(this))
+        return false;
+
+    // Close previous connection first to free resources.
+    MailClient.closeTCPSession((void *)this, true);
 
     _session_cfg = session_config;
 
@@ -3462,8 +3450,7 @@ bool SMTPSession::connect(bool &ssl)
     if (!MailClient.beginConnection(_session_cfg, (void *)(this), true, secureMode))
         return false;
 
-    // server connected
-    _tcpConnected = true;
+        // server connected
 #if !defined(SILENT_MODE)
     if (!_customCmdResCallback)
     {
@@ -3478,7 +3465,7 @@ bool SMTPSession::connect(bool &ssl)
     }
 #endif
 
-    client.setTimeout(TCP_CLIENT_DEFAULT_TCP_TIMEOUT_SEC);
+    client.setTimeout(tcpTimeout);
 
     // expected success status code 220 for ready to service
     // expected failure status code 421
@@ -3574,6 +3561,8 @@ void SMTPSession::debug(int level)
 {
     if (level > esp_mail_debug_level_none)
     {
+        if (level > esp_mail_debug_level_basic && level < esp_mail_debug_level_maintener)
+            level = esp_mail_debug_level_basic;
         _debugLevel = level;
         _debug = true;
         client.setDebugLevel(level);
@@ -3610,7 +3599,7 @@ int SMTPSession::errorCode()
 bool SMTPSession::closeSession()
 {
 
-    if (!_tcpConnected)
+    if (!connected())
         return false;
 
     _cbData._sentSuccess = _sentSuccessCount;
@@ -3703,6 +3692,27 @@ void SMTPSession::setSystemTime(time_t ts, float gmtOffset)
 {
     MailClient.Time.TZ = gmtOffset;
     MailClient.Time.setTimestamp(ts);
+}
+
+void SMTPSession::keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount)
+{
+#if !defined(ENABLE_CUSTOM_CLIENT)
+    this->client.keepAlive(tcpKeepIdleSeconds, tcpKeepIntervalSeconds, tcpKeepCount);
+#endif
+}
+
+bool SMTPSession::isKeepAlive()
+{
+#if !defined(ENABLE_CUSTOM_CLIENT)
+    return this->client.isKeepAlive();
+#else
+    return false;
+#endif
+}
+
+void SMTPSession::setTCPTimeout(unsigned long timeoutSec)
+{
+    tcpTimeout = timeoutSec;
 }
 
 void SMTPSession::setClient(Client *client, esp_mail_external_client_type type)

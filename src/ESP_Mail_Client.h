@@ -2,14 +2,14 @@
 #define ESP_MAIL_CLIENT_H
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30110)
+#if !VALID_VERSION_CHECK(30307)
 #error "Mixed versions compilation."
 #endif
 
 /**
  * Mail Client Arduino Library for Espressif's ESP32 and ESP8266, Raspberry Pi RP2040 Pico, and SAMD21 with u-blox NINA-W102 WiFi/Bluetooth module
  *
- * Created April 16, 2023
+ * Created July 29, 2023
  *
  * This library allows Espressif's ESP32, ESP8266, SAMD and RP2040 Pico devices to send and read Email through the SMTP and IMAP servers.
  *
@@ -67,7 +67,9 @@
 #if defined(ESP32)
 
 #include <WiFi.h>
+#if !defined(ENABLE_CUSTOM_CLIENT)
 #include <ETH.h>
+#endif
 #define ESP_MAIL_MIN_MEM 70000
 
 #elif defined(ESP8266)
@@ -171,10 +173,10 @@ public:
   size_t unseenIndex() { return _unseenMsgIndex; };
 
   /* Get the highest modification sequence */
-  int32_t highestModSeq() { return _highestModSeq; };
+  uint64_t highestModSeq() { return strtoull(_highestModSeq.c_str(), NULL, 10); };
 
-  /* Get the highest modification sequence */
-  int32_t modSeqSupported() { return _highestModSeq > -1 && !_nomodsec; };
+  /* Check for the modification sequence supports */
+  bool modSeqSupported() { return _highestModSeq.length() > 0 && !_nomodsec; };
 
   /* Get the numbers of messages from search result based on the search criteria
    */
@@ -224,7 +226,7 @@ private:
   size_t _uidValidity = 0;
   size_t _nextUID = 0;
   size_t _unseenMsgIndex = 0;
-  int32_t _highestModSeq = -1;
+  MB_String _highestModSeq;
   size_t _searchCount = 0;
   size_t _availableItems = 0;
   unsigned long _idleTimeMs = 0;
@@ -608,7 +610,7 @@ public:
   template <typename T1 = const char *, typename T2 = const char *>
   void addRecipient(T1 name, T2 email)
   {
-    struct esp_mail_smtp_recipient_t rcp;
+    struct esp_mail_address_info_t rcp;
     rcp.name = toStringPtr(name);
     rcp.email = toStringPtr(email);
     _rcp.push_back(rcp);
@@ -621,7 +623,7 @@ public:
   template <typename T = const char *>
   void addCc(T email)
   {
-    struct esp_mail_smtp_recipient_address_t cc;
+    struct esp_mail_address_info_t cc;
     cc.email = toStringPtr(email);
     _cc.push_back(cc);
   };
@@ -633,7 +635,7 @@ public:
   template <typename T = const char *>
   void addBcc(T email)
   {
-    struct esp_mail_smtp_recipient_address_t bcc;
+    struct esp_mail_address_info_t bcc;
     bcc.email = toStringPtr(email);
     _bcc.push_back(bcc);
   };
@@ -649,7 +651,10 @@ public:
   };
 
   /* The message author config */
-  struct esp_mail_email_info_t sender;
+  struct esp_mail_address_info_t author;
+
+  /* The message sender (agent or teansmitter) config */
+  struct esp_mail_address_info_t sender;
 
   /* The topic of message */
   MB_String subject;
@@ -673,7 +678,7 @@ public:
   struct esp_mail_smtp_enable_option_t enable;
 
   /* The message from config */
-  struct esp_mail_email_info_t from;
+  struct esp_mail_address_info_t from;
 
   /* The message identifier */
   MB_String messageID;
@@ -695,9 +700,9 @@ public:
 
 private:
   friend class ESP_Mail_Client;
-  MB_VECTOR<struct esp_mail_smtp_recipient_t> _rcp;
-  MB_VECTOR<struct esp_mail_smtp_recipient_address_t> _cc;
-  MB_VECTOR<struct esp_mail_smtp_recipient_address_t> _bcc;
+  MB_VECTOR<struct esp_mail_address_info_t> _rcp;
+  MB_VECTOR<struct esp_mail_address_info_t> _cc;
+  MB_VECTOR<struct esp_mail_address_info_t> _bcc;
   MB_VECTOR<MB_String> _hdr;
   MB_VECTOR<SMTP_Attachment> _att;
   MB_VECTOR<SMTP_Attachment> _parallel;
@@ -910,7 +915,7 @@ public:
 
 #if defined(ENABLE_NTP_TIME)
 
-  /** Assign UDP client and gmt offset for NTP time synching when using external SSL client
+  /** Assign UDP client and gmt offset for NTP time reading when using external SSL client
    * @param client The pointer to UDP client based on the network type.
    * @param gmtOffset The GMT time offset.
    */
@@ -1025,6 +1030,7 @@ private:
   bool networkAutoReconnect = true;
   volatile bool networkStatus = false;
   esp_mail_wifi_credentials_t wifi;
+  bool timezoneEnvSet = false;
 
 #if defined(HAS_WIFIMULTI)
   WiFiMulti *multi = nullptr;
@@ -1050,7 +1056,10 @@ private:
   void resumeNetwork(ESP_MAIL_TCP_CLIENT *client);
 
   // Get the CRLF ending string w/wo CRLF included. Return the size of string read and the current octet read.
-  int readLine(ESP_MAIL_TCP_CLIENT *client, char *buf, int bufLen, bool crlf, int &count);
+  int readLine(ESP_MAIL_TCP_CLIENT *client, char *buf, int bufLen, bool withLineBreak, int &count, bool &ovf, unsigned long timeoutSec, bool &isTimeout);
+
+  // readLine with overflow handling.
+  bool readResponse(void *sessionPtr, bool isSMTP, char *buf, int bufLen, int &readLen, bool withLineBreak, int &count, MB_String &ovfBuf);
 
   // PGM string replacement
   void strReplaceP(MB_String &buf, PGM_P key, PGM_P value);
@@ -1089,6 +1098,9 @@ private:
 
   // Close TCP session and clear auth_capability, read/send_capability, connected and authenticate statuses
   void closeTCPSession(void *sessionPtr, bool isSMTP);
+  
+  // Get and set timezone
+  void getSetTimezoneEnv(const char* TZ_file, const char* TZ_Var);
 
   // Get TCP connected status
   bool connected(void *sessionPtr, bool isSMTP);
@@ -1168,6 +1180,9 @@ private:
   // Append header field to buffer
   void appendHeaderField(MB_String &buf, const char *name, PGM_P value, bool comma, bool newLine, esp_mail_string_mark_type type = esp_mail_string_mark_type_none);
 
+  // Append SMTP address header field
+  void appendAddressHeaderField(MB_String &buf, esp_mail_address_info_t &source, esp_mail_rfc822_header_field_types type, bool header, bool comma, bool newLine);
+
   // Append header field name to buffer
   void appendHeaderName(MB_String &buf, const char *name, bool clear = false, bool lowercase = false, bool space = true);
 
@@ -1175,7 +1190,7 @@ private:
   void appendLowerCaseString(MB_String &buf, PGM_P value, bool clear = false);
 
   // Append header field property to buffer
-  void appendHeaderProp(MB_String &buf, PGM_P prop, const char *value, bool firstProp, bool lowerCase, bool isString, bool newLine);
+  void appendHeaderProp(MB_String &buf, PGM_P prop, const char *value, bool &firstProp, bool lowerCase, bool isString, bool newLine);
 
   // Append quote string to buffer
   void appendString(MB_String &buf, PGM_P value, bool comma, bool newLine, esp_mail_string_mark_type type = esp_mail_string_mark_type_none);
@@ -1679,6 +1694,12 @@ public:
   IMAPSession(Client *client, esp_mail_external_client_type type = esp_mail_external_client_type_none);
   IMAPSession();
   ~IMAPSession();
+
+  /** Set the tcp timeout.
+   *
+   * @param timeoutSec The tcp timeout in seconds.
+   */
+  void setTCPTimeout(unsigned long timeoutSec);
 
   /** Assign custom Client from Arduino Clients.
    *
@@ -2208,6 +2229,26 @@ public:
    */
   void setSystemTime(time_t ts, float gmtOffset = 0);
 
+  /** Setup TCP KeepAlive for internal TCP client.
+   *
+   * @param tcpKeepIdleSeconds lwIP TCP Keepalive idle in seconds.
+   * @param tcpKeepIntervalSeconds lwIP TCP Keepalive interval in seconds.
+   * @param tcpKeepCount lwIP TCP Keepalive count.
+   *
+   * For the TCP (KeepAlive) options, see https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/lwip.html#tcp-options.
+   *
+   * If value of one of these parameters is zero, the TCP KeepAlive will be disabled.
+   *
+   * You can check the server connecting status, by exexuting <IMAPSession>.connected() which will return true when connection to the server is still alive.
+   */
+  void keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount);
+
+  /** Get TCP KeepAlive status.
+   *
+   * @return Boolean status of TCP KeepAlive.
+   */
+  bool isKeepAlive();
+
   friend class ESP_Mail_Client;
   friend class foldderList;
 
@@ -2374,13 +2415,14 @@ private:
   // Print features not supported debug error message
   void printDebugNotSupported();
 
-  bool _tcpConnected = false;
   bool _sessionSSL = false;
   bool _sessionLogin = false;
   bool _loginStatus = false;
   unsigned long _last_polling_error_ms = 0;
   unsigned long _last_host_check_ms = 0;
   unsigned long _last_server_connect_ms = 0;
+  unsigned long _last_network_error_ms = 0;
+  unsigned long tcpTimeout = TCP_CLIENT_DEFAULT_TCP_TIMEOUT_SEC;
   struct esp_mail_imap_response_status_t _imapStatus;
   int _cMsgIdx = 0;
   int _cPartIdx = 0;
@@ -2421,6 +2463,7 @@ private:
 
   struct esp_mail_imap_data_config_t *_imap_data = nullptr;
 
+  int _userHeaderOnly = -1;
   bool _headerOnly = true;
   bool _uidSearch = false;
   bool _headerSaved = false;
@@ -2494,6 +2537,12 @@ public:
   SMTPSession(Client *client, esp_mail_external_client_type type = esp_mail_external_client_type_none);
   SMTPSession();
   ~SMTPSession();
+
+  /** Set the tcp timeout.
+   *
+   * @param timeoutSec The tcp timeout in seconds.
+   */
+  void setTCPTimeout(unsigned long timeoutSec);
 
   /** Assign custom Client from Arduino Clients.
    *
@@ -2690,12 +2739,31 @@ public:
    */
   void setSystemTime(time_t ts, float gmtOffset = 0);
 
+  /** Setup TCP KeepAlive for internal TCP client.
+   *
+   * @param tcpKeepIdleSeconds lwIP TCP Keepalive idle in seconds.
+   * @param tcpKeepIntervalSeconds lwIP TCP Keepalive interval in seconds.
+   * @param tcpKeepCount lwIP TCP Keepalive count.
+   *
+   * For the TCP (KeepAlive) options, see https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/lwip.html#tcp-options.
+   *
+   * If value of one of these parameters is zero, the TCP KeepAlive will be disabled.
+   *
+   * You can check the server connecting status, by exexuting <SMTPSession>.connected() which will return true when connection to the server is still alive.
+   */
+  void keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount);
+
+  /** Get TCP KeepAlive status.
+   *
+   * @return Boolean status of TCP KeepAlive.
+   */
+  bool isKeepAlive();
+
   SendingResult sendingResult;
 
   friend class ESP_Mail_Client;
 
 private:
-  bool _tcpConnected = false;
   bool _sessionSSL = false;
   bool _sessionLogin = false;
   struct esp_mail_smtp_response_status_t _smtpStatus;
@@ -2704,6 +2772,7 @@ private:
   bool _chunkedEnable = false;
   int _chunkCount = 0;
   uint32_t ts = 0;
+  unsigned long tcpTimeout = TCP_CLIENT_DEFAULT_TCP_TIMEOUT_SEC;
 
   esp_mail_smtp_command _smtp_cmd = esp_mail_smtp_command::esp_mail_smtp_cmd_greeting;
 
