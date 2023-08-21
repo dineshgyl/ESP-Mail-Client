@@ -1,8 +1,4 @@
-
-
 /**
- *This example shows how to log in with the SASL XOAUTH2 mechanisme using OAuth2.0 access token and send Email.
- *
  * Created by K. Suwatchai (Mobizt)
  *
  * Email: suwatchai@outlook.com
@@ -10,12 +6,13 @@
  * Github: https://github.com/mobizt/ESP-Mail-Client
  *
  * Copyright (c) 2023 mobizt
- *
- */
+*/
 
-/** ////////////////////////////////////////////////
- *  Struct data names changed from v2.x.x to v3.x.x
- *  ////////////////////////////////////////////////
+// This example shows how to log in with the SASL XOAUTH2 mechanisme using OAuth2.0 access token and send Email.
+
+/** Note for library update from v2.x.x to v3.x.x.
+ * 
+ *  Struct data names changed
  *
  * "ESP_Mail_Session" changes to "Session_Config"
  * "IMAP_Config" changes to "IMAP_Data"
@@ -29,7 +26,6 @@
  * IMAP_Config config;
  * to
  * IMAP_Data imap_data;
- *
  */
 
 /** For Gmail, to send the Email via port 465 (SSL), less secure app option
@@ -41,12 +37,12 @@
 #include <WiFi.h>
 #elif defined(ESP8266)
 #include <ESP8266WiFi.h>
-#else
-
-// Other Client defined here
-// To use custom Client, define ENABLE_CUSTOM_CLIENT in  src/ESP_Mail_FS.h.
-// See the example Custom_Client.ino for how to use.
-
+#elif __has_include(<WiFiNINA.h>)
+#include <WiFiNINA.h>
+#elif __has_include(<WiFi101.h>)
+#include <WiFi101.h>
+#elif __has_include(<WiFiS3.h>)
+#include <WiFiS3.h>
 #endif
 
 #include <ESP_Mail_Client.h>
@@ -107,11 +103,8 @@ void setup()
   Serial.begin(115200);
 
 #if defined(ARDUINO_ARCH_SAMD)
-  while (!Serial)
-    ;
-  Serial.println();
-  Serial.println("**** Custom built WiFiNINA firmware need to be installed.****\n");
-  Serial.println("To install firmware, read the instruction here, https://github.com/mobizt/ESP-Mail-Client#install-custom-build-wifinina-firmware");
+    while (!Serial)
+        ;
 #endif
 
   Serial.println();
@@ -177,11 +170,11 @@ void setup()
    * as this is the part of EHLO/HELO command to identify the client system
    * to prevent connection rejection.
    * If host name or public IP is not available, ignore this or
-   * use generic host "mydomain.net".
+   * use loopback address "127.0.0.1".
    *
    * Assign any text to this option may cause the connection rejection.
    */
-  config.login.user_domain = F("mydomain.net");
+  config.login.user_domain = F("127.0.0.1");
 
   /*
   Set the NTP config time
@@ -243,7 +236,7 @@ void setup()
   /* Connect to the server */
   if (!smtp.connect(&config))
   {
-    ESP_MAIL_PRINTF("Connection error, Status Code: %d, Error Code: %d, Reason: %s", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("Connection error, Status Code: %d, Error Code: %d, Reason: %s", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
     return;
   }
 
@@ -257,12 +250,12 @@ void setup()
 
   /* Start sending Email and close the session */
   if (!MailClient.sendMail(&smtp, &message))
-    ESP_MAIL_PRINTF("Error, Status Code: %d, Error Code: %d, Reason: %s", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
+    MailClient.printf("Error, Status Code: %d, Error Code: %d, Reason: %s", smtp.statusCode(), smtp.errorCode(), smtp.errorReason().c_str());
 
   // to clear sending result log
   // smtp.sendingResult.clear();
 
-  ESP_MAIL_PRINTF("Free Heap: %d\n", MailClient.getFreeHeap());
+  MailClient.printf("Free Heap: %d\n", MailClient.getFreeHeap());
 }
 
 void loop()
@@ -278,13 +271,13 @@ void smtpCallback(SMTP_Status status)
   /* Print the sending result */
   if (status.success())
   {
-    // ESP_MAIL_PRINTF used in the examples is for format printing via debug Serial port
-    // that works for all supported Arduino platform SDKs e.g. AVR, SAMD, ESP32 and ESP8266.
+    // MailClient.printf used in the examples is for format printing via debug Serial port
+    // that works for all supported Arduino platform SDKs e.g. SAMD, ESP32 and ESP8266.
     // In ESP8266 and ESP32, you can use Serial.printf directly.
 
     Serial.println("----------------");
-    ESP_MAIL_PRINTF("Message sent success: %d\n", status.completedCount());
-    ESP_MAIL_PRINTF("Message sent failed: %d\n", status.failedCount());
+    MailClient.printf("Message sent success: %d\n", status.completedCount());
+    MailClient.printf("Message sent failed: %d\n", status.failedCount());
     Serial.println("----------------\n");
 
     for (size_t i = 0; i < smtp.sendingResult.size(); i++)
@@ -297,11 +290,11 @@ void smtpCallback(SMTP_Status status)
       // Other devices may show invalid timestamp as the device time was not set i.e. it will show Jan 1, 1970.
       // You can call smtp.setSystemTime(xxx) to set device time manually. Where xxx is timestamp (seconds since Jan 1, 1970)
 
-      ESP_MAIL_PRINTF("Message No: %d\n", i + 1);
-      ESP_MAIL_PRINTF("Status: %s\n", result.completed ? "success" : "failed");
-      ESP_MAIL_PRINTF("Date/Time: %s\n", MailClient.Time.getDateTimeString(result.timestamp, "%B %d, %Y %H:%M:%S").c_str());
-      ESP_MAIL_PRINTF("Recipient: %s\n", result.recipients.c_str());
-      ESP_MAIL_PRINTF("Subject: %s\n", result.subject.c_str());
+      MailClient.printf("Message No: %d\n", i + 1);
+      MailClient.printf("Status: %s\n", result.completed ? "success" : "failed");
+      MailClient.printf("Date/Time: %s\n", MailClient.Time.getDateTimeString(result.timestamp, "%B %d, %Y %H:%M:%S").c_str());
+      MailClient.printf("Recipient: %s\n", result.recipients.c_str());
+      MailClient.printf("Subject: %s\n", result.subject.c_str());
     }
     Serial.println("----------------\n");
 

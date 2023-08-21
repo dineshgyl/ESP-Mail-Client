@@ -2,7 +2,7 @@
 #define RFC2047_CPP
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30307)
+#if !VALID_VERSION_CHECK(30406)
 #error "Mixed versions compilation."
 #endif
 
@@ -77,8 +77,8 @@ void RFC2047_Decoder::rfc2047DecodeWord(char *d, const char *s, size_t dlen)
 
   while (pp != NULL)
   {
-
-    strsep(&end, "?");
+    // See RFC2047.h
+    ESP_MAIL_STRSEP(&end, "?");
     count++;
     switch (count)
     {
@@ -153,7 +153,7 @@ void RFC2047_Decoder::rfc2047DecodeWord(char *d, const char *s, size_t dlen)
       }
       break;
     }
-    
+
     pp = end;
   }
 

@@ -1,4 +1,4 @@
-// Created July 28, 2023
+// Created August 20, 2023
 
 #pragma once
 
@@ -6,10 +6,11 @@
 #define ESP_MAIL_CONST_H
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30307)
+#if !VALID_VERSION_CHECK(30406)
 #error "Mixed versions compilation."
 #endif
 
+#include <Arduino.h>
 #include "ESP_Mail_FS.h"
 #include "ESP_Mail_Error.h"
 #include "extras/MB_FS.h"
@@ -17,19 +18,24 @@
 #include <time.h>
 #include <ctype.h>
 
-#if !defined(__AVR__)
+#if defined(ESP_MAIL_DEBUG_PORT)
+#define ESP_MAIL_DEFAULT_DEBUG_PORT ESP_MAIL_DEBUG_PORT
+#else
+#define ESP_MAIL_DEFAULT_DEBUG_PORT Serial
+#endif
+
 #include <vector>
 #include <algorithm>
+
+#define _vectorImpl std::vector
+#define MB_VECTOR std::vector
+
+#if !defined(FPSTR)
+#define FPSTR
 #endif
 
-#if defined(MB_ARDUINO_PICO)
-#if __has_include(<WiFiMulti.h>)
-#define HAS_WIFIMULTI
-#endif
-#endif
-
-#include "extras/MB_List.h"
-#include "extras/SDK_Version_Common.h"
+#include "extras/Networks_Provider.h"
+#include "extras/ESP8266_Supports.h"
 
 #if defined(ESP8266)
 #if __has_include(<core_esp8266_version.h>)
@@ -44,6 +50,10 @@
 #include <Updater.h>
 #endif
 #define ESP_MAIL_OTA_UPDATE_ENABLED
+#endif
+
+#if !defined(SILENT_MODE) && (defined(ENABLE_SMTP) || defined(ENABLE_IMAP))
+#define SESSION_DEBUG_ENABLED
 #endif
 
 #define TCP_CLIENT_DEFAULT_TCP_TIMEOUT_SEC 30
@@ -63,6 +73,25 @@
 
 #endif
 
+typedef enum
+{
+    esp_mail_cert_type_undefined = -1,
+    esp_mail_cert_type_none = 0,
+    esp_mail_cert_type_data,
+    esp_mail_cert_type_file,
+    esp_mail_cert_type_bundle
+
+} esp_mail_cert_type;
+
+typedef enum
+{
+    esp_mail_client_type_undefined,
+    esp_mail_client_type_internal_basic_client,
+    esp_mail_client_type_external_basic_client,
+    esp_mail_client_type_external_gsm_client
+
+} esp_mail_client_type;
+
 /* The filesystem types enum */
 enum esp_mail_file_storage_type
 {
@@ -70,6 +99,26 @@ enum esp_mail_file_storage_type
     esp_mail_file_storage_type_flash,
     esp_mail_file_storage_type_sd
 };
+
+/* The session types enum */
+enum esp_mail_session_type
+{
+    esp_mail_session_type_smtp,
+    esp_mail_session_type_imap
+};
+
+/* The secure connection mode preference */
+typedef enum
+{
+    // No preferences
+    esp_mail_secure_mode_undefined = 0,
+    // Always use SSL and TLS via STARTTLS rfc2595 section 3 and rfc3207
+    esp_mail_secure_mode_ssl_tls,
+    // Plain text mode only (non SSL/TLS)
+    // To disable SSL/TLS permanently, define ESP_MAIL_DISABLE_SSL in ESP_Mail_FS.h
+    esp_mail_secure_mode_nonsecure
+
+} esp_mail_secure_mode;
 
 using namespace mb_string;
 
@@ -526,8 +575,8 @@ enum esp_mail_debug_level
 {
     esp_mail_debug_level_none = 0,
     esp_mail_debug_level_basic,
-    esp_mail_debug_level_maintener = 0xfff,
-    esp_mail_debug_level_developer = esp_mail_debug_level_maintener + 1
+    esp_mail_debug_level_maintainer = 0xfff,
+    esp_mail_debug_level_developer = esp_mail_debug_level_maintainer + 1
 };
 
 /* The content transfer encoding enum */
@@ -1592,6 +1641,38 @@ enum esp_mail_char_decoding_scheme
     esp_mail_char_decoding_scheme_windows_874
 };
 
+enum esp_mail_imap_rights_type_t
+{
+    /* a - administer (perform SETACL/DELETEACL/GETACL/LISTRIGHTS) */
+    esp_mail_imap_rights_administer = 'a' - 'a',
+    /* c - RFC2086 (obsoleted) create (CREATE new sub-mailboxes in any implementation-defined hierarchy) */
+    esp_mail_imap_rights_create_c = 'c' - 'a',
+    /* d - RFC2086 (obsoleted) delete (STORE DELETED flag, perform EXPUNGE) */
+    esp_mail_imap_rights_delete_d = 'd' - 'a',
+    /* e - perform EXPUNGE and expunge as a part of CLOSE */
+    esp_mail_imap_rights_expunge = 'e' - 'a',
+    /* i - insert (perform APPEND, COPY into mailbox) */
+    esp_mail_imap_rights_insert = 'i' - 'a',
+    /* k - RFC4314 create mailboxes (CREATE new sub-mailboxes in any implementation-defined hierarchy, parent mailbox for the new mailbox name in RENAME)*/
+    esp_mail_imap_rights_create = 'k' - 'a',
+    /* l - lookup (mailbox is visible to LIST/LSUB commands, SUBSCRIBE mailbox) */
+    esp_mail_imap_rights_lookup = 'l' - 'a',
+    /* p - post (send mail to submission address for mailbox, not enforced by IMAP4 itself) */
+    esp_mail_imap_rights_post = 'p' - 'a',
+    /* r - read (SELECT the mailbox, perform STATUS) */
+    esp_mail_imap_rights_read = 'r' - 'a',
+    /* s - keep seen/unseen information across sessions (set or clear \SEEN flag via STORE, also set \SEEN during APPEND/COPY/ FETCH BODY[...]) */
+    esp_mail_imap_rights_seen = 's' - 'a',
+    /* t - RFC4314 delete messages (set or clear \DELETED flag via STORE, set \DELETED flag during APPEND/COPY) */
+    esp_mail_imap_rights_delete_message = 't' - 'a',
+    /* w - write (set or clear flags other than \SEEN and \DELETED via STORE, also set them during APPEND/COPY) */
+    esp_mail_imap_rights_write = 'w' - 'a',
+    /* x - RFC4314 delete mailbox (DELETE mailbox, old mailbox name in RENAME) */
+    esp_mail_imap_rights_delete_mailbox = 'x' - 'a',
+
+    esp_mail_imap_rights_maxType = esp_mail_imap_rights_delete_mailbox + 1
+};
+
 enum esp_mail_imap_port
 {
     esp_mail_imap_port_143 = 143, // PLAIN/TLS with STARTTLS
@@ -1759,21 +1840,7 @@ __attribute__((used)) struct
 
 struct esp_mail_imap_rfc822_msg_header_item_t
 {
-    MB_String sender;
-    MB_String from;
-    MB_String subject;
-    MB_String messageID;
-    MB_String keywords;
-    MB_String comments;
-    MB_String date;
-    MB_String return_path;
-    MB_String reply_to;
-    MB_String to;
-    MB_String cc;
-    MB_String bcc;
-    MB_String in_reply_to;
-    MB_String references;
-    MB_String flags;
+    MB_String header_items[esp_mail_rfc822_header_field_maxType];
 };
 
 /* IMAP quota root info */
@@ -1804,40 +1871,10 @@ typedef struct esp_mail_imap_namespace_info_t
 
 } IMAP_Namespace_Info;
 
-struct esp_mail_imap_rights_t
-{
-    /* l - lookup (mailbox is visible to LIST/LSUB commands, SUBSCRIBE mailbox) */
-    bool lookup = false;
-    /* r - read (SELECT the mailbox, perform STATUS) */
-    bool read = false;
-    /* s - keep seen/unseen information across sessions (set or clear \SEEN flag via STORE, also set \SEEN during APPEND/COPY/ FETCH BODY[...]) */
-    bool seen = false;
-    /* w - write (set or clear flags other than \SEEN and \DELETED via STORE, also set them during APPEND/COPY) */
-    bool write = false;
-    /* i - insert (perform APPEND, COPY into mailbox) */
-    bool insert = false;
-    /* p - post (send mail to submission address for mailbox, not enforced by IMAP4 itself) */
-    bool post = false;
-    /* c - RFC2086 (obsoleted) create (CREATE new sub-mailboxes in any implementation-defined hierarchy) */
-    bool create_c = false;
-    /* k - RFC4314 create mailboxes (CREATE new sub-mailboxes in any implementation-defined hierarchy, parent mailbox for the new mailbox name in RENAME)*/
-    bool create = false;
-    /* x - RFC4314 delete mailbox (DELETE mailbox, old mailbox name in RENAME) */
-    bool delete_mailbox = false;
-    /* d - RFC2086 (obsoleted) delete (STORE DELETED flag, perform EXPUNGE) */
-    bool delete_d = false;
-    /* t - RFC4314 delete messages (set or clear \DELETED flag via STORE, set \DELETED flag during APPEND/COPY) */
-    bool delete_messages = false;
-    /* e - perform EXPUNGE and expunge as a part of CLOSE */
-    bool expunge = false;
-    /* a - administer (perform SETACL/DELETEACL/GETACL/LISTRIGHTS) */
-    bool administer = false;
-};
-
 typedef struct esp_mail_imap_rights_info_t
 {
     MB_String identifier;
-    esp_mail_imap_rights_t rights;
+    bool rights[esp_mail_imap_rights_maxType];
 
 } IMAP_Rights_Info;
 
@@ -2188,7 +2225,7 @@ struct esp_mail_message_header_t
     MB_String flags;
     MB_String error_msg;
     bool error = false;
-    MB_VECTOR<struct esp_mail_message_part_info_t> part_headers;
+    _vectorImpl<struct esp_mail_message_part_info_t> part_headers;
     int attachment_count = 0;
     int sd_alias_file_count = 0;
     int total_download_size = 0;
@@ -2424,6 +2461,13 @@ public:
     // deprecated
     const char *ccCharset = "";
 
+    /* The Blind-carbon-copy recipient mailboxes (RFC 4021) */
+    const char *bcc = "";
+
+    /* The charset of the Blind-carbon-copy recipient mailbox header */
+    // deprecated
+    const char *bccCharset = "";
+
     /* The message date and time (RFC 4021) */
     const char *date = "";
 
@@ -2470,18 +2514,14 @@ public:
     /* The Email address to reply */
     const char *reply_to;
 
-    /* The charset of the Blind carbon-copy recipient mailbox header */
-    // deprecated
-    const char *bccCharset = "";
-
     /* The error description from fetching the message */
     const char *fetchError = "";
 
     /* The info about the attachments in the message */
-    MB_VECTOR<struct esp_mail_attachment_info_t> attachments;
+    _vectorImpl<struct esp_mail_attachment_info_t> attachments;
 
     /* The info about the rfc822 messages included in the message */
-    MB_VECTOR<esp_mail_imap_msg_item_t> rfc822;
+    _vectorImpl<esp_mail_imap_msg_item_t> rfc822;
 
     /* The status for message that contains attachment */
     bool hasAttachment = false;
@@ -2489,20 +2529,21 @@ public:
 private:
     void setRFC822Headers(struct esp_mail_imap_rfc822_msg_header_item_t *rfc822_header)
     {
-        from = rfc822_header->from.c_str();
-        sender = rfc822_header->sender.c_str();
-        to = rfc822_header->to.c_str();
-        cc = rfc822_header->cc.c_str();
-        return_path = rfc822_header->return_path.c_str();
-        reply_to = rfc822_header->reply_to.c_str();
-        subject = rfc822_header->subject.c_str();
-        comments = rfc822_header->comments.c_str();
-        keywords = rfc822_header->keywords.c_str();
-        in_reply_to = rfc822_header->in_reply_to.c_str();
-        references = rfc822_header->references.c_str();
-        date = rfc822_header->date.c_str();
-        ID = rfc822_header->messageID.c_str();
-        flags = rfc822_header->flags.c_str();
+        from = rfc822_header->header_items[esp_mail_rfc822_header_field_from].c_str();
+        sender = rfc822_header->header_items[esp_mail_rfc822_header_field_sender].c_str();
+        to = rfc822_header->header_items[esp_mail_rfc822_header_field_to].c_str();
+        cc = rfc822_header->header_items[esp_mail_rfc822_header_field_cc].c_str();
+        subject = rfc822_header->header_items[esp_mail_rfc822_header_field_subject].c_str();
+        date = rfc822_header->header_items[esp_mail_rfc822_header_field_date].c_str();
+        ID = rfc822_header->header_items[esp_mail_rfc822_header_field_msg_id].c_str();
+        return_path = rfc822_header->header_items[esp_mail_rfc822_header_field_return_path].c_str();
+        reply_to = rfc822_header->header_items[esp_mail_rfc822_header_field_reply_to].c_str();
+        in_reply_to = rfc822_header->header_items[esp_mail_rfc822_header_field_in_reply_to].c_str();
+        references = rfc822_header->header_items[esp_mail_rfc822_header_field_references].c_str();
+        comments = rfc822_header->header_items[esp_mail_rfc822_header_field_comments].c_str();
+        keywords = rfc822_header->header_items[esp_mail_rfc822_header_field_keywords].c_str();
+        bcc = rfc822_header->header_items[esp_mail_rfc822_header_field_bcc].c_str();
+        flags = rfc822_header->header_items[esp_mail_rfc822_header_field_flags].c_str();
         text.charSet = "";
         text.content_type = "";
         text.transfer_encoding = "";
@@ -2515,7 +2556,7 @@ private:
 struct esp_mail_imap_msg_list_t
 {
     /* The info of a message */
-    MB_VECTOR<esp_mail_imap_msg_item_t> msgItems;
+    _vectorImpl<esp_mail_imap_msg_item_t> msgItems;
 };
 
 struct esp_mail_imap_multipart_level_t
@@ -2648,8 +2689,11 @@ struct esp_mail_sesson_time_config_t
 
 struct esp_mail_sesson_secure_config_t
 {
-    /* The option to send the SMTP and IMAP commands to start the TLS connection rfc2595 section 3 and rfc3207 */
+    /** The option (obsoleted) to send the SMTP and IMAP commands to start the TLS connection rfc2595 section 3 and rfc3207 */
     bool startTLS = false;
+
+    /* The secure connection mode preference */
+    esp_mail_secure_mode mode = esp_mail_secure_mode_undefined;
 };
 
 struct esp_mail_spi_ethernet_module_t
@@ -2711,7 +2755,7 @@ public:
         aremovePtr();
     }
 
-    void addPtr(MB_List<int> *listPtr, int ptr)
+    void addPtr(_vectorImpl<int> *listPtr, int ptr)
     {
         if (listPtr)
         {
@@ -2751,6 +2795,7 @@ public:
         server.port = 0;
 
         secure.startTLS = false;
+        secure.mode = esp_mail_secure_mode_undefined;
 
         login.email.clear();
         login.password.clear();
@@ -2773,7 +2818,12 @@ public:
 private:
     int cert_ptr = 0;
     bool cert_updated = false;
-    MB_List<int> *listPtr = nullptr;
+    _vectorImpl<int> *listPtr = nullptr;
+
+    // Internal flags use to keep user sercure.startTLS and secure.mode.
+    bool int_start_tls = false;
+    esp_mail_secure_mode int_mode = esp_mail_secure_mode_undefined;
+
     void clearPorts()
     {
         if (ports_functions.list)
@@ -2850,10 +2900,15 @@ struct esp_mail_wifi_credential_t
 struct esp_mail_wifi_credentials_t
 {
     friend class ESP_Mail_Client;
+    friend class ESP_Mail_TCPClient;
 
 public:
     esp_mail_wifi_credentials_t(){};
-    ~esp_mail_wifi_credentials_t() { clearAP(); };
+    ~esp_mail_wifi_credentials_t()
+    {
+        clearAP();
+        clearMulti();
+    };
     void addAP(const String &ssid, const String &password)
     {
         esp_mail_wifi_credential_t cred;
@@ -2867,7 +2922,52 @@ public:
     }
 
 private:
-    MB_List<esp_mail_wifi_credential_t> credentials;
+    _vectorImpl<esp_mail_wifi_credential_t> credentials;
+#if defined(ESP_MAIL_HAS_WIFIMULTI)
+    WiFiMulti *multi = nullptr;
+#endif
+
+    void reconnect()
+    {
+        if (credentials.size())
+        {
+            disconnect();
+            connect();
+        }
+    }
+
+    void connect()
+    {
+#if defined(ESP_MAIL_HAS_WIFIMULTI)
+
+        clearMulti();
+        multi = new WiFiMulti();
+        for (size_t i = 0; i < credentials.size(); i++)
+            multi->addAP(credentials[i].ssid.c_str(), credentials[i].password.c_str());
+
+        if (credentials.size() > 0)
+            multi->run();
+
+#elif defined(ESP_MAIL_WIFI_IS_AVAILABLE)
+        WiFi.begin((CONST_STRING_CAST)credentials[0].ssid.c_str(), credentials[0].password.c_str());
+#endif
+    }
+
+    void disconnect()
+    {
+#if defined(ESP_MAIL_WIFI_IS_AVAILABLE)
+        WiFi.disconnect();
+#endif
+    }
+
+    void clearMulti()
+    {
+#if defined(ESP_MAIL_HAS_WIFIMULTI)
+        if (multi)
+            delete multi;
+        multi = nullptr;
+#endif
+    }
 };
 
 static const char esp_mail_imap_tag_str[] PROGMEM = "xmail";
@@ -3086,16 +3186,10 @@ static const char esp_mail_error_mem_str_10[] PROGMEM = "please make sure that t
 
 #if !defined(SILENT_MODE)
 static const char esp_mail_error_client_str_1[] PROGMEM = "client and/or necessary callback functions are not yet assigned";
-static const char esp_mail_error_client_str_2[] PROGMEM = "custom Client is not yet enabled";
-static const char esp_mail_error_client_str_3[] PROGMEM = "simple Client is required";
-static const char esp_mail_error_client_str_4[] PROGMEM = "the client type must be provided, see example";
-static const char esp_mail_error_client_str_5[] PROGMEM = "client connection upgrade callback (for TLS handshake) is required";
-static const char esp_mail_error_client_str_6[] PROGMEM = "network connection callback is required";
-static const char esp_mail_error_client_str_7[] PROGMEM = "network connection status callback is required";
-static const char esp_mail_error_client_str_8[] PROGMEM = "client is not yet initialized";
-static const char esp_mail_error_client_str_9[] PROGMEM = "UDP client is required for NTP server time reading based on your network type";
-static const char esp_mail_error_client_str_10[] PROGMEM = "e.g. WiFiUDP or EthernetUDP. Please call MailClient.setUDPClient(&udpClient, gmtOffset); to assign the UDP client";
-static const char esp_mail_error_client_str_11[] PROGMEM = "the Connection Request Callback is now optional";
+static const char esp_mail_error_client_str_2[] PROGMEM = "network connection callback is required";
+static const char esp_mail_error_client_str_3[] PROGMEM = "network connection status callback is required";
+static const char esp_mail_error_client_str_4[] PROGMEM = "NTP server time reading cannot begin when valid time is required because of no WiFi capability/activity detected.";
+static const char esp_mail_error_client_str_5[] PROGMEM = "Please set the library reference time manually using smtp.setSystemTime or imap.setSystemTime.";
 #endif
 
 /////////////////////////
@@ -3203,7 +3297,7 @@ static const char esp_mail_error_imap_str_21[] PROGMEM = "server is not support 
 
 /////////////////////////
 // General use string
-static const char esp_mail_str_1[] PROGMEM = "mydomain.com";
+static const char esp_mail_str_1[] PROGMEM = "127.0.0.1";
 static const char esp_mail_str_2[] PROGMEM = " ";
 static const char esp_mail_str_3[] PROGMEM = "*";
 static const char esp_mail_str_4[] PROGMEM = "High";
@@ -3341,15 +3435,21 @@ appendDebugTag(MB_String &buf, esp_mail_debug_tag_type type, bool clear, PGM_P t
         buf += text;
 }
 
-// Print debug message w/wo new line to debug port
 static void __attribute__((used))
-esp_mail_debug_print(PGM_P msg = "", bool newLine = true)
+yield_impl()
 {
 #if defined(ARDUINO_ESP8266_MAJOR) && defined(ARDUINO_ESP8266_MINOR) && defined(ARDUINO_ESP8266_REVISION) && ((ARDUINO_ESP8266_MAJOR == 3 && ARDUINO_ESP8266_MINOR >= 1) || ARDUINO_ESP8266_MAJOR > 3)
     esp_yield();
 #else
     delay(0);
 #endif
+}
+
+// Print debug message w/wo new line to debug port
+static void __attribute__((used))
+esp_mail_debug_print(PGM_P msg = "", bool newLine = true)
+{
+    yield_impl();
     if (newLine)
         ESP_MAIL_DEFAULT_DEBUG_PORT.println(msg);
     else
@@ -3357,16 +3457,15 @@ esp_mail_debug_print(PGM_P msg = "", bool newLine = true)
 }
 
 static void __attribute__((used))
-esp_mail_debug_print_tag(PGM_P msg, esp_mail_debug_tag_type type, bool newLine = true)
+esp_mail_debug_print_tag(PGM_P msg, esp_mail_debug_tag_type type, bool newLine = true, bool showTag = true)
 {
-#if defined(ARDUINO_ESP8266_MAJOR) && defined(ARDUINO_ESP8266_MINOR) && defined(ARDUINO_ESP8266_REVISION) && ((ARDUINO_ESP8266_MAJOR == 3 && ARDUINO_ESP8266_MINOR >= 1) || ARDUINO_ESP8266_MAJOR > 3)
-    esp_yield();
-#else
-    delay(0);
-#endif
+    yield_impl();
 
     MB_String s;
-    appendDebugTag(s, type, false, msg);
+    if (showTag)
+        appendDebugTag(s, type, false, msg);
+    else
+        s = msg;
 
     if (newLine)
         ESP_MAIL_DEFAULT_DEBUG_PORT.println(s.c_str());

@@ -1,17 +1,18 @@
 /**
- * This example shows how to get, set the access control list.
+ * Created by K. Suwatchai (Mobizt)
  *
  * Email: suwatchai@outlook.com
  *
  * Github: https://github.com/mobizt/ESP-Mail-Client
  *
  * Copyright (c) 2023 mobizt
- *
  */
 
-/** ////////////////////////////////////////////////
- *  Struct data names changed from v2.x.x to v3.x.x
- *  ////////////////////////////////////////////////
+// This example shows how to get, set the access control list.
+
+/** Note for library update from v2.x.x to v3.x.x.
+ *
+ *  Struct data names changed
  *
  * "ESP_Mail_Session" changes to "Session_Config"
  * "IMAP_Config" changes to "IMAP_Data"
@@ -25,7 +26,6 @@
  * IMAP_Config config;
  * to
  * IMAP_Data imap_data;
- *
  */
 
 /** For ESP8266, with BearSSL WiFi Client
@@ -39,12 +39,12 @@
 #include <WiFi.h>
 #elif defined(ESP8266)
 #include <ESP8266WiFi.h>
-#else
-
-// Other Client defined here
-// To use custom Client, define ENABLE_CUSTOM_CLIENT in  src/ESP_Mail_FS.h.
-// See the example Custom_Client.ino for how to use.
-
+#elif __has_include(<WiFiNINA.h>)
+#include <WiFiNINA.h>
+#elif __has_include(<WiFi101.h>)
+#include <WiFi101.h>
+#elif __has_include(<WiFiS3.h>)
+#include <WiFiS3.h>
 #endif
 
 #include <ESP_Mail_Client.h>
@@ -96,9 +96,6 @@ void setup()
 #if defined(ARDUINO_ARCH_SAMD)
     while (!Serial)
         ;
-    Serial.println();
-    Serial.println("**** Custom built WiFiNINA firmware need to be installed.****\n");
-    Serial.println("To install firmware, read the instruction here, https://github.com/mobizt/ESP-Mail-Client#install-custom-build-wifinina-firmware");
 #endif
 
     Serial.println();
@@ -111,7 +108,7 @@ void setup()
 #endif
 
     Serial.print("Connecting to Wi-Fi");
-        
+
 #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
     unsigned long ms = millis();
 #endif
@@ -183,52 +180,33 @@ void setup()
 
         for (size_t i = 0; i < acl_list.size(); i++)
         {
-            ESP_MAIL_PRINTF("Identifier: %s, Rights: ", acl_list[i].identifier.c_str());
-            if (acl_list[i].rights.lookup)
-                Serial.print("l");
-            if (acl_list[i].rights.read)
-                Serial.print("r");
-            if (acl_list[i].rights.seen)
-                Serial.print("s");
-            if (acl_list[i].rights.write)
-                Serial.print("w");
-            if (acl_list[i].rights.insert)
-                Serial.print("i");
-            if (acl_list[i].rights.post)
-                Serial.print("p");
-            if (acl_list[i].rights.create)
-                Serial.print("k");
-            if (acl_list[i].rights.create_c)
-                Serial.print("c");
-            if (acl_list[i].rights.delete_mailbox)
-                Serial.print("x");
-            if (acl_list[i].rights.delete_messages)
-                Serial.print("t");
-            if (acl_list[i].rights.delete_d)
-                Serial.print("d");
-            if (acl_list[i].rights.expunge)
-                Serial.print("e");
-            if (acl_list[i].rights.administer)
-                Serial.print("a");
-            Serial.println();
+            MailClient.printf("Identifier: %s, Rights: ", acl_list[i].identifier.c_str());
+            String r;
+            for (int j = esp_mail_imap_rights_administer; j < esp_mail_imap_rights_maxType; j++)
+            {
+                if (acl_list[i].rights[j])
+                    r += (char)('a' + j);
+            }
+
+            Serial.println(r);
         }
     }
 
     IMAP_Rights_Info acl;
     acl.identifier = "Steve";
-    acl.rights.administer = true;
-    acl.rights.create = true;
-    acl.rights.create_c = true;
-    acl.rights.delete_messages = true;
-    acl.rights.delete_d = true;
-    acl.rights.delete_mailbox = true;
-    acl.rights.expunge = true;
-    acl.rights.lookup = true;
-    acl.rights.insert = true;
-    acl.rights.post = true;
-    acl.rights.read = true;
-    acl.rights.write = true;
-    acl.rights.seen = true;
+    acl.rights[esp_mail_imap_rights_administer] = true;
+    acl.rights[esp_mail_imap_rights_create] = true;
+    acl.rights[esp_mail_imap_rights_create_c] = true;
+    acl.rights[esp_mail_imap_rights_delete_message] = true;
+    acl.rights[esp_mail_imap_rights_delete_d] = true;
+    acl.rights[esp_mail_imap_rights_delete_mailbox] = true;
+    acl.rights[esp_mail_imap_rights_expunge] = true;
+    acl.rights[esp_mail_imap_rights_lookup] = true;
+    acl.rights[esp_mail_imap_rights_insert] = true;
+    acl.rights[esp_mail_imap_rights_post] = true;
+    acl.rights[esp_mail_imap_rights_read] = true;
+    acl.rights[esp_mail_imap_rights_write] = true;
+    acl.rights[esp_mail_imap_rights_seen] = true;
 
     Serial.println("\nSet ACLs...");
 
@@ -250,33 +228,15 @@ void setup()
     else
     {
         Serial.print("Rights: ");
-        if (acl.rights.lookup)
-            Serial.print("l");
-        if (acl.rights.read)
-            Serial.print("r");
-        if (acl.rights.seen)
-            Serial.print("s");
-        if (acl.rights.write)
-            Serial.print("w");
-        if (acl.rights.insert)
-            Serial.print("i");
-        if (acl.rights.post)
-            Serial.print("p");
-        if (acl.rights.create)
-            Serial.print("k");
-        if (acl.rights.create_c)
-            Serial.print("c");
-        if (acl.rights.delete_mailbox)
-            Serial.print("x");
-        if (acl.rights.delete_messages)
-            Serial.print("t");
-        if (acl.rights.delete_d)
-            Serial.print("d");
-        if (acl.rights.expunge)
-            Serial.print("e");
-        if (acl.rights.administer)
-            Serial.print("a");
-        Serial.println();
+
+          String r;
+            for (int i = esp_mail_imap_rights_administer; i < esp_mail_imap_rights_maxType; i++)
+            {
+                if (acl.rights[i])
+                    r += (char)('a' + i);
+            }
+
+            Serial.println(r);
     }
 
     Serial.println("\nDelete ACLs...");
@@ -290,7 +250,7 @@ void setup()
         Serial.println("Delete ACLs success");
     }
 
-    ESP_MAIL_PRINTF("Free Heap: %d\n", MailClient.getFreeHeap());
+    MailClient.printf("Free Heap: %d\n", MailClient.getFreeHeap());
 }
 
 void loop()

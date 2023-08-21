@@ -2,14 +2,14 @@
 #define ESP_MAIL_CLIENT_H
 
 #include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30307)
+#if !VALID_VERSION_CHECK(30406)
 #error "Mixed versions compilation."
 #endif
 
 /**
- * Mail Client Arduino Library for Espressif's ESP32 and ESP8266, Raspberry Pi RP2040 Pico, and SAMD21 with u-blox NINA-W102 WiFi/Bluetooth module
+ * Mail Client Arduino Library for Arduino devices.
  *
- * Created July 29, 2023
+ * Created August 20, 2023
  *
  * This library allows Espressif's ESP32, ESP8266, SAMD and RP2040 Pico devices to send and read Email through the SMTP and IMAP servers.
  *
@@ -39,25 +39,27 @@
 #include "extras/RFC2047.h"
 #include <time.h>
 #include <ctype.h>
-#if !defined(__AVR__)
+
 #include <algorithm>
 #include <string>
 #include <vector>
+
+#if __has_include(<string.h>)
+#include <string.h>
 #endif
 
-#if __has_include(<WiFiNINA.h>)
-#include <WiFiNINA.h>
-#elif __has_include(<WiFi101.h>)
-#include <WiFi101.h>
+#if __has_include(<stdarg.h>)
+#include <stdarg.h>
 #endif
 
-#include "extras/MB_Time.h"
-#include "ESP_Mail_Print.h"
 #include "ESP_Mail_FS.h"
 #include "ESP_Mail_Const.h"
+#include "extras/MB_Time.h"
 
-#if __has_include(<WiFi101.h>)
-#include <WiFi101.h>
+#if defined(MB_ARDUINO_ESP) || defined(MB_ARDUINO_PICO)
+#define ESP_MAIL_PRINTF ESP_MAIL_DEFAULT_DEBUG_PORT.printf
+#else
+#define ESP_MAIL_PRINTF MailClient.printf
 #endif
 
 #if defined(ESP32) || defined(ESP8266) || defined(MB_ARDUINO_PICO)
@@ -66,21 +68,15 @@
 
 #if defined(ESP32)
 
-#include <WiFi.h>
-#if !defined(ENABLE_CUSTOM_CLIENT)
-#include <ETH.h>
-#endif
 #define ESP_MAIL_MIN_MEM 70000
 
 #elif defined(ESP8266)
 
-#include <ESP8266WiFi.h>
 #define SD_CS_PIN 15
-#define ESP_MAIL_MIN_MEM 4000
+#define ESP_MAIL_MIN_MEM 8000
 
 #elif defined(MB_ARDUINO_PICO)
 
-#include <WiFi.h>
 #define ESP_MAIL_MIN_MEM 70000
 #define SD_CS_PIN PIN_SPI1_SS
 
@@ -102,7 +98,7 @@ extern char *__brkval;
 
 #endif
 
-#include "wcs/ESP_TCP_Clients.h"
+#include "ESP_Mail_TCPClient.h"
 
 using namespace mb_string;
 
@@ -129,7 +125,7 @@ public:
   void clear() { _list.clear(); }
 
 private:
-  MB_VECTOR<int> _list;
+  _vectorImpl<int> _list;
 };
 
 /* The class that provides the info of selected or opened mailbox folder */
@@ -234,8 +230,8 @@ private:
   bool _floderChangedState = false;
   bool _nomodsec = false;
   IMAP_Polling_Status _polling_status;
-  MB_VECTOR<MB_String> _flags;
-  MB_VECTOR<MB_String> _permanent_flags;
+  _vectorImpl<MB_String> _flags;
+  _vectorImpl<MB_String> _permanent_flags;
 };
 
 /* The class that provides the list of FolderInfo e.g. name, attributes and
@@ -281,7 +277,7 @@ private:
     }
     _folders.clear();
   }
-  MB_VECTOR<esp_mail_folder_info_t> _folders;
+  _vectorImpl<esp_mail_folder_info_t> _folders;
 };
 
 /* The class that provides the list of IMAP_Quota_Root_Info e.g. resource name, used and limit */
@@ -304,7 +300,7 @@ public:
   }
 
 private:
-  MB_VECTOR<IMAP_Quota_Root_Info> _quota_roots;
+  _vectorImpl<IMAP_Quota_Root_Info> _quota_roots;
 
   void add(IMAP_Quota_Root_Info v)
   {
@@ -336,7 +332,7 @@ public:
   }
 
 private:
-  MB_VECTOR<IMAP_Namespace_Info> _ns_list;
+  _vectorImpl<IMAP_Namespace_Info> _ns_list;
 
   void add(IMAP_Namespace_Info v)
   {
@@ -368,7 +364,7 @@ public:
   }
 
 private:
-  MB_VECTOR<IMAP_Rights_Info> _rights_list;
+  _vectorImpl<IMAP_Rights_Info> _rights_list;
 
   void add(IMAP_Rights_Info v)
   {
@@ -407,6 +403,46 @@ typedef void (*imapResponseCallback)(IMAP_Response);
 typedef void (*MIMEDataStreamCallback)(MIME_Data_Stream_Info);
 typedef void (*imapCharacterDecodingCallback)(IMAP_Decoding_Info *);
 
+#else
+
+enum esp_mail_imap_read_capability_types
+{
+  esp_mail_imap_read_capability_maxType
+};
+
+// Dummy class used in template functions (errorStatusCB).
+class IMAPSession
+{
+public:
+  struct IMAP_Status
+  {
+  public:
+    const char *info() { return ""; };
+    bool success() { return false; };
+    void empty();
+    MB_String _info;
+    bool _success = false;
+  };
+
+  typedef void (*imapStatusCallback)(IMAP_Status);
+  MB_String errorReason() { return ""; }
+  bool _debug;
+  imapStatusCallback _statusCallback = nullptr;
+  void *_customCmdResCallback = nullptr;
+  esp_mail_session_type _sessionType = esp_mail_session_type_imap;
+
+  struct esp_mail_imap_response_status_t
+  {
+    int errorCode = 0;
+    MB_String tag;
+    MB_String text;
+    MB_String status;
+    bool completed = false;
+  };
+
+  esp_mail_imap_response_status_t _responseStatus;
+  IMAP_Status _cbData;
+};
 #endif
 
 #if defined(ENABLE_SMTP)
@@ -700,13 +736,13 @@ public:
 
 private:
   friend class ESP_Mail_Client;
-  MB_VECTOR<struct esp_mail_address_info_t> _rcp;
-  MB_VECTOR<struct esp_mail_address_info_t> _cc;
-  MB_VECTOR<struct esp_mail_address_info_t> _bcc;
-  MB_VECTOR<MB_String> _hdr;
-  MB_VECTOR<SMTP_Attachment> _att;
-  MB_VECTOR<SMTP_Attachment> _parallel;
-  MB_VECTOR<SMTP_Message> _rfc822;
+  _vectorImpl<struct esp_mail_address_info_t> _rcp;
+  _vectorImpl<struct esp_mail_address_info_t> _cc;
+  _vectorImpl<struct esp_mail_address_info_t> _bcc;
+  _vectorImpl<MB_String> _hdr;
+  _vectorImpl<SMTP_Attachment> _att;
+  _vectorImpl<SMTP_Attachment> _parallel;
+  _vectorImpl<SMTP_Message> _rfc822;
 };
 
 class SMTP_Status
@@ -751,11 +787,6 @@ public:
     mbfs = nullptr;
 
     wifi.clearAP();
-#if defined(HAS_WIFIMULTI)
-    if (multi)
-      delete multi;
-    multi = nullptr;
-#endif
   };
 
 #if defined(ENABLE_SMTP)
@@ -913,15 +944,8 @@ public:
    */
   void networkReconnect(bool reconnect);
 
-#if defined(ENABLE_NTP_TIME)
-
-  /** Assign UDP client and gmt offset for NTP time reading when using external SSL client
-   * @param client The pointer to UDP client based on the network type.
-   * @param gmtOffset The GMT time offset.
-   */
-  void setUDPClient(UDP *client, float gmtOffset);
-
-#endif
+  /* Obsoleted */
+  void setUDPClient(void *client, float gmtOffset) {}
 
   /** Clear all WiFi access points assigned.
    *
@@ -934,6 +958,12 @@ public:
    * @param password The WiFi password.
    */
   void addAP(const String &ssid, const String &password);
+
+  /**
+   * Formatted printing on debug port.
+   *
+   */
+  void printf(const char *format, ...);
 
 #if defined(MBFS_SD_FS) && defined(MBFS_CARD_TYPE_SD)
 
@@ -1020,6 +1050,22 @@ public:
 
   MB_Time Time;
 
+#if defined(ENABLE_IMAP)
+
+  // Get encoding type from character set string
+  esp_mail_char_decoding_scheme getEncodingFromCharset(const char *enc);
+
+  // Decode Latin1 to UTF-8
+  int decodeLatin1_UTF8(unsigned char *out, int *outlen, const unsigned char *in, int *inlen);
+
+  // Decode TIS620 to UTF-8
+  void decodeTIS620_UTF8(char *out, const char *in, size_t len);
+
+  // handle rfc2047 Q (quoted printable) and B (base64) decodings
+  RFC2047_Decoder RFC2047Decoder;
+
+#endif
+
 private:
   friend class SMTPSession;
   friend class IMAPSession;
@@ -1032,17 +1078,7 @@ private:
   esp_mail_wifi_credentials_t wifi;
   bool timezoneEnvSet = false;
 
-#if defined(HAS_WIFIMULTI)
-  WiFiMulti *multi = nullptr;
-#endif
-
-#if defined(ENABLE_IMAP)
-#define IMAP_SESSION IMAPSession
-#else
-#define IMAP_SESSION void
-#endif
-
-  IMAP_SESSION *imap = nullptr;
+  IMAPSession *imap = nullptr;
   bool calDataLen = false;
   uint32_t dataLen = 0;
   uint32_t imap_ts = 0;
@@ -1053,13 +1089,22 @@ private:
   uint16_t _reconnectTimeout = ESP_MAIL_NETWORK_RECONNECT_TIMEOUT;
 
   // Resume network connection
-  void resumeNetwork(ESP_MAIL_TCP_CLIENT *client);
+  void resumeNetwork(ESP_Mail_TCPClient *client);
 
   // Get the CRLF ending string w/wo CRLF included. Return the size of string read and the current octet read.
-  int readLine(ESP_MAIL_TCP_CLIENT *client, char *buf, int bufLen, bool withLineBreak, int &count, bool &ovf, unsigned long timeoutSec, bool &isTimeout);
+  int readLine(ESP_Mail_TCPClient *client, char *buf, int bufLen, bool withLineBreak, int &count, bool &ovf, unsigned long timeoutSec, bool &isTimeout);
 
   // readLine with overflow handling.
-  bool readResponse(void *sessionPtr, bool isSMTP, char *buf, int bufLen, int &readLen, bool withLineBreak, int &count, MB_String &ovfBuf);
+  template <class T>
+  bool readResponse(T sessionPtr, char *buf, int bufLen, int &readLen, bool withLineBreak, int &count, MB_String &ovfBuf);
+
+  // Network reconnection and return the connection status
+  template <class T>
+  bool reconnect(T sessionPtr, unsigned long dataTime = 0, bool downloadRequest = false);
+
+  // Send callback
+  template <class T>
+  void sendCB(T sessionPtr, PGM_P info = "", bool prependCRLF = false, bool success = false);
 
   // PGM string replacement
   void strReplaceP(MB_String &buf, PGM_P key, PGM_P value);
@@ -1070,40 +1115,53 @@ private:
   // Get SASL XOAUTH2 string
   MB_String getXOAUTH2String(const MB_String &email, const MB_String &accessToken);
 
+  // Send error callback
+  template <class T>
+  void sendErrorCB(T sessionPtr, PGM_P info, bool prependCRLF = false, bool success = false);
+
+  // Send the error status callback
+  template <class T1, class T2>
+  void errorStatusCB(T1 sessionPtr, T2 sessionPtr2, int error, bool clearLastStatus);
+
   // Check response callback was assigned?
-  bool isResponseCB(void *cb, bool isSMTP);
+  template <class T>
+  bool isResponseCB(T sessionPtr);
 
   // Print library info
-  void printLibInfo(void *sessionPtr, bool isSMTP);
+  template <class T>
+  void printLibInfo(T sessionPtr);
 
   // Begin server connection
-  bool beginConnection(Session_Config *session_config, void *sessionPtr, bool isSMTP, bool secureMode);
+  template <class T>
+  bool beginConnection(Session_Config *session_config, T sessionPtr, bool secureMode);
 
   // Prepare system time
-  bool prepareTime(Session_Config *session_config, void *sessionPtr, bool isSMTP);
+  template <class T>
+  bool prepareTime(Session_Config *session_config, T sessionPtr);
 
   // Check for session. Close session If not ready.
-  bool sessionReady(void *sessionPtr, bool isSMTP);
+  template <class T>
+  bool sessionReady(T sessionPtr);
 
-#if defined(ESP32_TCP_CLIENT) || defined(ESP8266_TCP_CLIENT)
   // Set cert data
   void setCert(Session_Config *session_cfg, const char *ca);
   // Set secure data
-  void setSecure(ESP_MAIL_TCP_CLIENT &client, Session_Config *session_config);
-#endif
+  void setSecure(ESP_Mail_TCPClient &client, Session_Config *session_config);
 
   void appendMultipartContentType(MB_String &buf, esp_mail_multipart_types type, const char *boundary);
 
   String errorReason(bool isSMTP, int errorCode, const char *msg);
 
   // Close TCP session and clear auth_capability, read/send_capability, connected and authenticate statuses
-  void closeTCPSession(void *sessionPtr, bool isSMTP);
-  
+  template <class T>
+  void closeTCPSession(T sessionPtr);
+
   // Get and set timezone
-  void getSetTimezoneEnv(const char* TZ_file, const char* TZ_Var);
+  void getSetTimezoneEnv(const char *TZ_file, const char *TZ_Var);
 
   // Get TCP connected status
-  bool connected(void *sessionPtr, bool isSMTP);
+  template <class T>
+  bool connected(T sessionPtr);
 
   // Get the memory allocation block size of multiple of 4
   size_t getReservedLen(size_t len);
@@ -1115,7 +1173,7 @@ private:
   char *getRandomUID();
 
   // Spit the string into token strings
-  void splitToken(const char *str, MB_VECTOR<MB_String> &tk, const char *delim);
+  void splitToken(const char *str, _vectorImpl<MB_String> &tk, const char *delim);
 
   // Decode base64 encoded string
   unsigned char *decodeBase64(const unsigned char *src, size_t len, size_t *out_len);
@@ -1166,13 +1224,16 @@ private:
   void getTimezone(const char *TZ_file, MB_String &out);
 
   // Check the session existent
-  bool sessionExisted(void *sessionPtr, bool isSMTP);
+  template <class T>
+  bool sessionExisted(T sessionPtr);
 
   // Send SMTP/IMAP callback
-  void sendCallback(void *sessionPtr, PGM_P info, bool isSMTP, bool prependCRLF, bool success);
+  template <class T>
+  void sendCallback(T sessionPtr, PGM_P info, bool prependCRLF, bool success);
 
   // Send IMAP/SMTP response callback and print debug message
-  void printDebug(void *sessionPtr, bool isSMTP, PGM_P cbMsg, PGM_P dbMsg, esp_mail_debug_tag_type type, bool prependCRLF, bool success);
+  template <class T>
+  void printDebug(T sessionPtr, PGM_P cbMsg, PGM_P dbMsg, esp_mail_debug_tag_type type, bool prependCRLF, bool success);
 
   // Get header content from response based on the field name
   bool getHeader(const char *buf, PGM_P beginToken, MB_String &out, bool caseSensitive);
@@ -1197,7 +1258,7 @@ private:
 
   // Append list to buffer
   template <class T>
-  void appendList(MB_String &buf, MB_VECTOR<T> &list);
+  void appendList(MB_String &buf, _vectorImpl<T> &list);
 
   // Append space to buffer
   void appendSpace(MB_String &buf);
@@ -1245,7 +1306,8 @@ private:
   void debugPrintNewLine();
 
   // Send newline to callback
-  void callBackSendNewLine(void *sessionPtr, bool isSMTP, bool success);
+  template <class T>
+  void callBackSendNewLine(T sessionPtr, bool success);
 
   // Print progress bar
   void printProgress(int progress, int &lastProgress);
@@ -1258,8 +1320,6 @@ private:
 
   // Get operation config based on port and its protocol
   void getPortFunction(uint16_t port, struct esp_mail_ports_functions &ports_functions, bool &secure, bool &secureMode, bool &ssl, bool &starttls);
-
-  void idle();
 
 #endif
 
@@ -1285,12 +1345,6 @@ private:
 
   // Send Email function
   bool mSendMail(SMTPSession *smtp, SMTP_Message *msg, bool closeSession = true);
-
-  // Network reconnection and return the connection status
-  bool reconnect(SMTPSession *smtp, unsigned long dataTime = 0);
-
-  // Send the error status callback
-  void errorStatusCB(SMTPSession *smtp, int error);
 
   // SMTP send data
   size_t smtpSend(SMTPSession *smtp, PGM_P data, bool newline = false);
@@ -1421,12 +1475,6 @@ private:
   // Get imap or smtp report progress var pointer
   uint32_t altProgressPtr(SMTPSession *smtp);
 
-  // Send callback
-  void smtpCB(SMTPSession *smtp, PGM_P info = "", bool prependCRLF = false, bool success = false);
-
-  // Send error callback
-  void smtpErrorCB(SMTPSession *smtp, PGM_P info, bool prependCRLF = false, bool success = false);
-
   // Get SMTP response status (statusCode and text)
   void getResponseStatus(const char *buf, esp_mail_smtp_status_code statusCode, int beginPos, struct esp_mail_smtp_response_status_t &status);
 
@@ -1438,10 +1486,6 @@ private:
 
   // Handle SMTP server authentication
   bool smtpAuth(SMTPSession *smtp, bool &ssl);
-
-  // Check if response from basic client is actually TLS alert header
-  // This is the response returns after basic Client sent plain text packet over SSL/TLS
-  void checkTLSAlert(SMTPSession *smtp, const char *response);
 
   // Handle SMTP response
   bool handleSMTPResponse(SMTPSession *smtp, esp_mail_smtp_command cmd, esp_mail_smtp_status_code statusCode, int errCode);
@@ -1457,9 +1501,6 @@ private:
 #endif
 
 #if defined(ENABLE_IMAP)
-
-  // handle rfc2047 Q (quoted printable) and B (base64) decodings
-  RFC2047_Decoder RFC2047Decoder;
 
   // Check if child part (part number string) is a member of the parent part (part number string)
   // part number string format: <part number>.<sub part number>.<sub part number>
@@ -1477,14 +1518,8 @@ private:
   // Actually not decode because 8bit string is enencode string unless prepare valid 8bit string
   char *decode8Bit_UTF8(char *buf);
 
-  // Get encoding type from character set string
-  esp_mail_char_decoding_scheme getEncodingFromCharset(const char *enc);
-
   // Decode string base on encoding
   void decodeString(IMAPSession *imap, MB_String &string, const char *enc = "");
-
-  // Decode Latin1 to UTF-8
-  int decodeLatin1_UTF8(unsigned char *out, int *outlen, const unsigned char *in, int *inlen);
 
   /**
    * Encode a code point using UTF-8
@@ -1499,12 +1534,6 @@ private:
    * @return number of bytes on success, 0 on failure (also produces U+FFFD, which uses 3 bytes)
    */
   int encodeUnicode_UTF8(char *out, uint32_t utf);
-
-  // Decode TIS620 to UTF-8
-  void decodeTIS620_UTF8(char *out, const char *in, size_t len);
-
-  // Network reconnection and return the connection status
-  bool reconnect(IMAPSession *imap, unsigned long dataTime = 0, bool downloadRequestuest = false);
 
   // Append headers fetch command
   void appendHeadersFetchCommand(IMAPSession *imap, MB_String &cmd, int index, bool debug);
@@ -1527,9 +1556,6 @@ private:
   // Send IMAP command
   bool sendFetchCommand(IMAPSession *imap, int msgIndex, esp_mail_imap_command cmdCase);
 
-  // Send error callback
-  void errorStatusCB(IMAPSession *imap, int error, bool clearStatus);
-
   // Send data
   size_t imapSend(IMAPSession *imap, PGM_P data, bool newline = false);
 
@@ -1541,9 +1567,6 @@ private:
 
   // Log out
   bool imapLogout(IMAPSession *imap);
-
-  // Send error callback
-  void imapErrorCB(IMAPSession *imap, PGM_P info, bool prependCRLF = false, bool success = false);
 
   // Send storage error callback
   void sendStorageNotReadyError(IMAPSession *imap, esp_mail_file_storage_type storageType);
@@ -1592,12 +1615,8 @@ private:
 
 #if !defined(MB_USE_STD_VECTOR)
   // Decending sort
-  void numDecSort(MB_VECTOR<struct esp_mail_imap_msg_num_t> &arr);
+  void numDecSort(_vectorImpl<struct esp_mail_imap_msg_num_t> &arr);
 #endif
-
-  // Check if response from basic client is actually TLS alert
-  // This response may return after basic Client sent plain text packet over SSL/TLS
-  void checkTLSAlert(IMAPSession *imap, const char *response);
 
   // Handle IMAP response
   bool handleIMAPResponse(IMAPSession *imap, int errCode, bool closeSession);
@@ -1691,7 +1710,7 @@ private:
 class IMAPSession
 {
 public:
-  IMAPSession(Client *client, esp_mail_external_client_type type = esp_mail_external_client_type_none);
+  IMAPSession(Client *client);
   IMAPSession();
   ~IMAPSession();
 
@@ -1703,34 +1722,26 @@ public:
 
   /** Assign custom Client from Arduino Clients.
    *
-   * @param client The pointer to Arduino Client derived class e.g. WiFiClient, WiFiClientSecure, EthernetClient or GSMClient.
-   * @param type The type of external Client e.g. esp_mail_external_client_type_basic and esp_mail_external_client_type_ssl
+   * @param client The pointer to Arduino Client derived class e.g. WiFiClient, EthernetClient or GSMClient.
    */
-  void setClient(Client *client, esp_mail_external_client_type type = esp_mail_external_client_type_none);
+  void setClient(Client *client);
 
-  /** Assign the callback function to handle the server connection for custom Client.
+  /** Assign TinyGsm Clients.
    *
-   * @param connectionCB The function that handles the server connection.
+   * @param client The pointer to TinyGsmClient.
+   * @param modem The pointer to TinyGsm modem object. Modem should be initialized and/or set mode before transfering data.
+   * @param pin The SIM pin.
+   * @param apn The GPRS APN (Access Point Name).
+   * @param user The GPRS user.
+   * @param password The GPRS password.
    */
-  void connectionRequestCallback(ConnectionRequestCallback connectionCB);
-
-  /** Assign the callback function to handle the server upgrade connection for custom Client.
-   *
-   * @param upgradeCB The function that handles existing connection upgrade.
-   */
-  void connectionUpgradeRequestCallback(ConnectionUpgradeRequestCallback upgradeCB);
+  void setGSMClient(Client *client, void *modem, const char *pin, const char *apn, const char *user, const char *password);
 
   /** Assign the callback function to handle the network connection for custom Client.
    *
    * @param networkConnectionCB The function that handles the network connection.
    */
   void networkConnectionRequestCallback(NetworkConnectionRequestCallback networkConnectionCB);
-
-  /** Assign the callback function to handle the network disconnection for custom Client.
-   *
-   * @param networkDisconnectionCB The function that handles the network disconnection.
-   */
-  void networkDisconnectionRequestCallback(NetworkDisconnectionRequestCallback networkDisconnectionCB);
 
   /** Assign the callback function to handle the network connection status acknowledgement.
    *
@@ -1743,6 +1754,13 @@ public:
    * @param status The network status.
    */
   void setNetworkStatus(bool status);
+
+  /** Set the BearSSL IO buffer size.
+   *
+   * @param rx The BearSSL receive buffer size in bytes.
+   * @param tx The BearSSL trasmit buffer size in bytes.
+   */
+  void setSSLBufferSize(int rx = -1, int tx = -1);
 
   /** Begin the IMAP server connection.
    *
@@ -2423,11 +2441,11 @@ private:
   unsigned long _last_server_connect_ms = 0;
   unsigned long _last_network_error_ms = 0;
   unsigned long tcpTimeout = TCP_CLIENT_DEFAULT_TCP_TIMEOUT_SEC;
-  struct esp_mail_imap_response_status_t _imapStatus;
+  struct esp_mail_imap_response_status_t _responseStatus;
   int _cMsgIdx = 0;
   int _cPartIdx = 0;
   int _totalRead = 0;
-  MB_VECTOR<struct esp_mail_message_header_t> _headers;
+  _vectorImpl<struct esp_mail_message_header_t> _headers;
 
   esp_mail_imap_command _imap_cmd = esp_mail_imap_command::esp_mail_imap_cmd_sasl_login;
   esp_mail_imap_command _prev_imap_cmd = esp_mail_imap_command::esp_mail_imap_cmd_sasl_login;
@@ -2435,7 +2453,7 @@ private:
   esp_mail_imap_command _prev_imap_custom_cmd = esp_mail_imap_cmd_custom;
   bool _idle = false;
   MB_String _cmd;
-  MB_VECTOR<struct esp_mail_imap_multipart_level_t> _multipart_levels;
+  _vectorImpl<struct esp_mail_imap_multipart_level_t> _multipart_levels;
   int _rfc822_part_count = 0;
   bool _unseen = false;
   bool _readOnlyMode = true;
@@ -2445,9 +2463,9 @@ private:
   bool _storageChecked = false;
 
   bool _auth_capability[esp_mail_auth_capability_maxType];
-  bool _read_capability[esp_mail_imap_read_capability_maxType];
+  bool _feature_capability[esp_mail_imap_read_capability_maxType];
   Session_Config *_session_cfg;
-  MB_List<int> _configPtrList;
+  _vectorImpl<int> _configPtrList;
   MB_String _currentFolder;
   bool _mailboxOpened = false;
   unsigned long _lastSameFolderOpenMillis = 0;
@@ -2472,19 +2490,20 @@ private:
   bool _secure = false;
   bool _authenticated = false;
   bool _isFirmwareUpdated = false;
-  imapStatusCallback _readCallback = NULL;
+  imapStatusCallback _statusCallback = NULL;
   imapResponseCallback _customCmdResCallback = NULL;
   MIMEDataStreamCallback _mimeDataStreamCallback = NULL;
   imapCharacterDecodingCallback _charDecCallback = NULL;
 
-  MB_VECTOR<struct esp_mail_imap_msg_num_t> _imap_msg_num;
+  _vectorImpl<struct esp_mail_imap_msg_num_t> _imap_msg_num;
+  esp_mail_session_type _sessionType = esp_mail_session_type_imap;
 
   FoldersCollection _folders;
   SelectedFolderInfo _mbif;
   int _uid_tmp = 0;
   int _lastProgress = -1;
 
-  ESP_MAIL_TCP_CLIENT client;
+  ESP_Mail_TCPClient client;
 
   IMAP_Status _cbData;
 };
@@ -2496,7 +2515,7 @@ private:
 class SendingResult
 {
 private:
-  MB_VECTOR<SMTP_Result> _result;
+  _vectorImpl<SMTP_Result> _result;
 
   void add(SMTP_Result *r)
   {
@@ -2534,7 +2553,7 @@ public:
 class SMTPSession
 {
 public:
-  SMTPSession(Client *client, esp_mail_external_client_type type = esp_mail_external_client_type_none);
+  SMTPSession(Client *client);
   SMTPSession();
   ~SMTPSession();
 
@@ -2546,34 +2565,26 @@ public:
 
   /** Assign custom Client from Arduino Clients.
    *
-   * @param client The pointer to Arduino Client derived class e.g. WiFiClient, WiFiClientSecure, EthernetClient or GSMClient.
-   * @param type The type of external Client e.g. esp_mail_external_client_type_basic and esp_mail_external_client_type_ssl
+   * @param client The pointer to Arduino Client derived class e.g. WiFiClient, EthernetClient or GSMClient.
    */
-  void setClient(Client *client, esp_mail_external_client_type type = esp_mail_external_client_type_none);
+  void setClient(Client *client);
 
-  /** Assign the callback function to handle the server connection for custom Client.
+  /** Assign TinyGsm Clients.
    *
-   * @param connectionCB The function that handles the server connection.
+   * @param client The pointer to TinyGsmClient.
+   * @param modem The pointer to TinyGsm modem object. Modem should be initialized and/or set mode before transfering data.
+   * @param pin The SIM pin.
+   * @param apn The GPRS APN (Access Point Name).
+   * @param user The GPRS user.
+   * @param password The GPRS password.
    */
-  void connectionRequestCallback(ConnectionRequestCallback connectionCB);
-
-  /** Assign the callback function to handle the server upgrade connection for custom Client.
-   *
-   * @param upgradeCB The function that handles existing connection upgrade.
-   */
-  void connectionUpgradeRequestCallback(ConnectionUpgradeRequestCallback upgradeCB);
+  void setGSMClient(Client *client, void *modem, const char *pin, const char *apn, const char *user, const char *password);
 
   /** Assign the callback function to handle the network connection for custom Client.
    *
    * @param networkConnectionCB The function that handles the network connection.
    */
   void networkConnectionRequestCallback(NetworkConnectionRequestCallback networkConnectionCB);
-
-  /** Assign the callback function to handle the network disconnection for custom Client.
-   *
-   * @param networkDisconnectionCB The function that handles the network disconnection.
-   */
-  void networkDisconnectionRequestCallback(NetworkDisconnectionRequestCallback networkDisconnectionCB);
 
   /** Assign the callback function to handle the network connection status acknowledgement.
    *
@@ -2586,6 +2597,13 @@ public:
    * @param status The network status.
    */
   void setNetworkStatus(bool status);
+
+  /** Set the BearSSL IO buffer size.
+   *
+   * @param rx The BearSSL receive buffer size in bytes.
+   * @param tx The BearSSL trasmit buffer size in bytes.
+   */
+  void setSSLBufferSize(int rx = -1, int tx = -1);
 
   /** Begin the SMTP server connection.
    *
@@ -2766,7 +2784,7 @@ public:
 private:
   bool _sessionSSL = false;
   bool _sessionLogin = false;
-  struct esp_mail_smtp_response_status_t _smtpStatus;
+  struct esp_mail_smtp_response_status_t _responseStatus;
   int _sentSuccessCount = 0;
   int _sentFailedCount = 0;
   bool _chunkedEnable = false;
@@ -2777,10 +2795,10 @@ private:
   esp_mail_smtp_command _smtp_cmd = esp_mail_smtp_command::esp_mail_smtp_cmd_greeting;
 
   bool _auth_capability[esp_mail_auth_capability_maxType];
-  bool _send_capability[esp_mail_smtp_send_capability_maxType];
+  bool _feature_capability[esp_mail_smtp_send_capability_maxType];
 
   Session_Config *_session_cfg = NULL;
-  MB_List<int> _configPtrList;
+  _vectorImpl<int> _configPtrList;
 
   bool _debug = false;
   int _debugLevel = 0;
@@ -2789,7 +2807,7 @@ private:
   bool _loginStatus = false;
   bool _waitForAuthenticate = false;
   bool _canForward = false;
-  smtpStatusCallback _sendCallback = NULL;
+  smtpStatusCallback _statusCallback = NULL;
   smtpResponseCallback _customCmdResCallback = NULL;
   int _commandID = -1;
   bool _sdStorageReady = false;
@@ -2797,11 +2815,12 @@ private:
   bool _sdStorageChecked = false;
   bool _flashStorageChecked = false;
 
+  esp_mail_session_type _sessionType = esp_mail_session_type_smtp;
   SMTP_Status _cbData;
   struct esp_mail_smtp_msg_type_t _msgType;
   int _lastProgress = -1;
 
-  ESP_MAIL_TCP_CLIENT client;
+  ESP_Mail_TCPClient client;
 
   // Start TCP connection
   bool connect(bool &ssl);
@@ -2834,27 +2853,6 @@ public:
 };
 
 #endif
-
-static void __attribute__((used)) esp_mail_dump_blob(unsigned char *buf, size_t len)
-{
-
-  size_t u;
-
-  for (u = 0; u < len; u++)
-  {
-    if ((u & 15) == 0)
-    {
-      ESP_MAIL_PRINTF("\n%08lX  ", (unsigned long)u);
-    }
-    else if ((u & 7) == 0)
-    {
-      ESP_MAIL_PRINTF(" ");
-    }
-    ESP_MAIL_PRINTF(" %02x", buf[u]);
-  }
-
-  ESP_MAIL_PRINTF("\n");
-}
 
 extern ESP_Mail_Client MailClient;
 
