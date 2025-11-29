@@ -3,15 +3,10 @@
 
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 
-#include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30406)
-#error "Mixed versions compilation."
-#endif
-
 /**
  * Mail Client Arduino Library for Arduino devices.
  *
- * Created August 20, 2023
+ * Created July 15, 2024
  *
  * This library allows Espressif's ESP32, ESP8266, SAMD and RP2040 Pico devices to send and read Email through the SMTP and IMAP servers.
  *
@@ -503,12 +498,12 @@ void ESP_Mail_Client::getTimezone(const char *TZ_file, MB_String &out)
 #endif
 }
 
-void ESP_Mail_Client::setTime(float gmt_offset, float day_light_offset, const char *ntp_server, const char *TZ_Var, const char *TZ_file, bool wait)
+void ESP_Mail_Client::setTime(const char *TZ_Var, const char *TZ_file, bool wait, bool debugProgress)
 {
 
-  _clockReady = Time.clockReady();
+  timeStatus = Time.timeReady();
 
-  if (!_clockReady)
+  if (!timeStatus)
   {
 
 #if defined(ENABLE_IMAP) || defined(ENABLE_SMTP)
@@ -517,15 +512,7 @@ void ESP_Mail_Client::setTime(float gmt_offset, float day_light_offset, const ch
 
     if (WiFI_CONNECTED)
     {
-      Time.setClock(gmt_offset, day_light_offset, ntp_server);
-      if (wait)
-      {
-        unsigned long waitMs = millis();
-        while (!Time.clockReady() && millis() - waitMs < 10000)
-        {
-          yield_impl();
-        }
-      }
+      Time.readNTPTime(wait ? 10000 : 0, debugProgress);
     }
     else
     {
@@ -544,7 +531,7 @@ void ESP_Mail_Client::setTime(float gmt_offset, float day_light_offset, const ch
 #endif
   }
 
-  _clockReady = Time.clockReady();
+  timeStatus = Time.timeReady();
 }
 
 void ESP_Mail_Client::getSetTimezoneEnv(const char *TZ_file, const char *TZ_Var)
@@ -806,16 +793,23 @@ void ESP_Mail_Client::appendHeaderField(MB_String &buf, const char *name, PGM_P 
   appendString(buf, value, comma, newLine, type);
 }
 
-void ESP_Mail_Client::appendAddressHeaderField(MB_String &buf, esp_mail_address_info_t &source, esp_mail_rfc822_header_field_types type, bool header, bool comma, bool newLine)
+void ESP_Mail_Client::appendAddressHeaderField(MB_String &buf, esp_mail_address_info_t &source, esp_mail_rfc822_header_field_types type, bool header, bool comma, bool newLine, bool encode)
 {
+
+  yield_impl();
+
   // Construct header field.
   if (header)
     appendHeaderName(buf, rfc822_headers[type].text);
 
-  if (type != esp_mail_rfc822_header_field_cc && type != esp_mail_rfc822_header_field_bcc &&
-      source.name.length() > 0)
+  if (type != esp_mail_rfc822_header_field_cc && type != esp_mail_rfc822_header_field_bcc && source.name.length() > 0)
   {
-    appendString(buf, source.name.c_str(), false, false, esp_mail_string_mark_type_double_quote);
+    if (comma)
+      buf += esp_mail_str_8; /* "," */
+
+    comma = false;
+
+    appendString(buf, encode ? encodeBUTF8(source.name.c_str()).c_str() : source.name.c_str(), false, false, esp_mail_string_mark_type_double_quote);
     // Add white space after name for SMTP to fix iCloud Mail Service IMAP search compatibility issue #278
     // This is not restricted by rfc2822.
     appendSpace(buf);
@@ -982,6 +976,21 @@ MB_String ESP_Mail_Client::mGetBase64(MB_StringPtr str)
 {
   MB_String data = str;
   return encodeBase64Str((uint8_t *)(data.c_str()), data.length());
+}
+
+MB_String ESP_Mail_Client::encodeBUTF8(const char *src)
+{
+  MB_String buff;
+  size_t len = strlen(src);
+  if (len > 4 && src[0] != '=' && src[1] != '?' && src[len - 1] != '=' && src[len - 2] != '?')
+  {
+    buff = "=?utf-8?B?";
+    buff += toBase64(src);
+    buff += "?=";
+  }
+  else
+    buff = src;
+  return buff;
 }
 
 int ESP_Mail_Client::readLine(ESP_Mail_TCPClient *client, char *buf, int bufLen, bool withLineBreak, int &count, bool &ovf, unsigned long timeoutSec, bool &isTimeout)
@@ -1280,6 +1289,7 @@ bool ESP_Mail_Client::beginConnection(Session_Config *session_config, T sessionP
 
   sessionPtr->client.setWiFi(&wifi);
   sessionPtr->client.setSession(session_config);
+  sessionPtr->client.setBSSLSession(&(sessionPtr->_bsslSession));
 
   if (!reconnect<T>(sessionPtr))
     return false;
@@ -1347,7 +1357,10 @@ bool ESP_Mail_Client::prepareTime(Session_Config *session_config, T sessionPtr)
 
   if (session_config->time.ntp_server.length() > 0 || timeShouldBeValid)
   {
-    if (!Time.clockReady())
+
+    Time.begin(session_config->time.gmt_offset, session_config->time.day_light_offset, session_config->time.ntp_server.c_str());
+
+    if (!Time.timeReady())
     {
       if (sessionPtr->client.type() == esp_mail_client_type_external_gsm_client)
       {
@@ -1359,16 +1372,17 @@ bool ESP_Mail_Client::prepareTime(Session_Config *session_config, T sessionPtr)
         int sec = 0;
         float timezone = 0;
         if (sessionPtr->client.gprsGetTime(year, month, day, hour, min, sec, timezone))
-          Time.setTimestamp(Time.getTimestamp(year, month, day, hour, min, sec));
+          Time.setTimestamp(Time.getTimestamp(year, month, day, hour, min, sec), timezone);
       }
-      else
+      else if (session_config->time.ntp_server.length())
       {
 #if defined(ENABLE_NTP_TIME)
 #if !defined(SILENT_MODE)
         if (sessionPtr->_debug && !isResponseCB<T>(sessionPtr))
-          esp_mail_debug_print_tag(esp_mail_dbg_str_21 /* "Reading time from NTP server" */, esp_mail_debug_tag_type_client, true);
+          esp_mail_debug_print_tag(esp_mail_dbg_str_21 /* "Reading time from NTP server" */, esp_mail_debug_tag_type_client, false);
 #endif
-        setTime(session_config->time.gmt_offset, session_config->time.day_light_offset, session_config->time.ntp_server.c_str(), session_config->time.timezone_env_string.c_str(), session_config->time.timezone_file.c_str(), true);
+
+        setTime(session_config->time.timezone_env_string.c_str(), session_config->time.timezone_file.c_str(), true, sessionPtr->_debug && !isResponseCB<T>(sessionPtr));
 #endif
       }
     }
@@ -1377,15 +1391,15 @@ bool ESP_Mail_Client::prepareTime(Session_Config *session_config, T sessionPtr)
 #endif
 
 #if defined(ESP32)
-  if (Time.clockReady() && !timezoneEnvSet)
+  if (Time.timeReady() && !timezoneEnvSet)
     getSetTimezoneEnv(session_config->time.timezone_file.c_str(), session_config->time.timezone_env_string.c_str());
 #endif
 
-  if (Time.clockReady())
+  if (Time.timeReady())
     return true;
   else if (WiFI_CONNECTED && timeShouldBeValid)
   {
-    errorStatusCB<T, IMAPSession *>(sessionPtr, nullptr, ntpEnabled ? MAIL_CLIENT_ERROR_NTP_TIME_SYNC_TIMED_OUT : MAIL_CLIENT_ERROR_TIME_WAS_NOT_SET, false);
+    errorStatusCB<T, IMAPSession *>(sessionPtr, nullptr, ntpEnabled && session_config->time.ntp_server.length() ? MAIL_CLIENT_ERROR_NTP_TIME_SYNC_TIMED_OUT : MAIL_CLIENT_ERROR_TIME_WAS_NOT_SET, false);
     return false;
   }
 
@@ -1434,7 +1448,7 @@ void ESP_Mail_Client::setSecure(ESP_Mail_TCPClient &client, Session_Config *sess
   {
     if (session_config->certificate.cert_file.length() > 0 || session_config->certificate.cert_data != NULL || session_config->cert_ptr > 0)
     {
-      client.setClockReady(_clockReady);
+      client.setClockReady(timeStatus);
     }
 
     if (session_config->certificate.cert_file.length() == 0)

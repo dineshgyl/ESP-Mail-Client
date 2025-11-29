@@ -2,15 +2,10 @@
 #ifndef ESP_MAIL_IMAP_H
 #define ESP_MAIL_IMAP_H
 
-#include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30406)
-#error "Mixed versions compilation."
-#endif
-
 /**
  * Mail Client Arduino Library for Espressif's ESP32 and ESP8266, Raspberry Pi RP2040 Pico, and SAMD21 with u-blox NINA-W102 WiFi/Bluetooth module
  *
- * Created August 20, 2023
+ * Created April 1, 2024
  *
  * This library allows Espressif's ESP32, ESP8266, SAMD and RP2040 Pico devices to send and read Email through the SMTP and IMAP servers.
  *
@@ -449,6 +444,9 @@ bool ESP_Mail_Client::readMail(IMAPSession *imap, bool closeSession)
     }
     else
     {
+        // If time config changed, we will update time
+        MailClient.prepareTime<IMAPSession *>(imap->_session_cfg, imap);
+
         // reuse session
         for (size_t i = 0; i < imap->_headers.size(); i++)
             imap->_headers[i].part_headers.clear();
@@ -3380,7 +3378,7 @@ void ESP_Mail_Client::addHeaderItem(MB_String &str, esp_mail_message_header_t *h
 
 int ESP_Mail_Client::getRFC822HeaderPtr(int index, esp_mail_imap_rfc822_msg_header_item_t *header)
 {
-    if (index > esp_mail_rfc822_header_field_from && index < esp_mail_rfc822_header_field_maxType)
+    if (index >= esp_mail_rfc822_header_field_from && index < esp_mail_rfc822_header_field_maxType)
         return toAddr(header->header_items[index]);
     return 0;
 }
@@ -4856,7 +4854,7 @@ bool IMAPSession::connect(bool &ssl)
     bool secureMode = true;
 
     client.txBufDivider = 16; // minimum, tx buffer size for ssl data and request command data
-    client.rxBufDivider = 1;
+    client.rxBufDivider = 8;
     if (_imap_data)
     {
         if (!_headerOnly && !_imap_data->firmware_update.attach_filename.length() == 0 && !_imap_data->enable.html && !_imap_data->enable.text && !_imap_data->download.attachment && !_imap_data->download.inlineImg && !_imap_data->download.html && !_imap_data->download.text)
@@ -4884,7 +4882,7 @@ bool IMAPSession::connect(bool &ssl)
     unsigned long dataMs = millis();
     while (client.connected() && client.available() == 0 && millis() - dataMs < 2000)
     {
-       yield_impl();
+        yield_impl();
     }
 
     int chunkBufSize = client.available();
@@ -4991,6 +4989,11 @@ void IMAPSession::setClient(Client *client)
 void IMAPSession::setGSMClient(Client *client, void *modem, const char *pin, const char *apn, const char *user, const char *password)
 {
     this->client.setGSMClient(client, modem, pin, apn, user, password);
+}
+
+void IMAPSession::setEthernetClient(Client *client, uint8_t macAddress[6], int csPin, int resetPin, ESP_Mail_StaticIP *staticIP)
+{
+    this->client.setEthernetClient(client, macAddress, csPin, resetPin, staticIP);
 }
 
 void IMAPSession::networkConnectionRequestCallback(NetworkConnectionRequestCallback networkConnectionCB)
@@ -5340,8 +5343,7 @@ void IMAPSession::mimeDataStreamCallback(MIMEDataStreamCallback mimeDataStreamCa
 
 void IMAPSession::setSystemTime(time_t ts, float gmtOffset)
 {
-    MailClient.Time.TZ = gmtOffset;
-    MailClient.Time.setTimestamp(ts);
+    MailClient.Time.setTimestamp(ts, gmtOffset);
 }
 
 void IMAPSession::keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount)

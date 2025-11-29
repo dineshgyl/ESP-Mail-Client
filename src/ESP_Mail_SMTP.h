@@ -2,15 +2,10 @@
 #ifndef ESP_MAIL_SMTP_H
 #define ESP_MAIL_SMTP_H
 
-#include "ESP_Mail_Client_Version.h"
-#if !VALID_VERSION_CHECK(30406)
-#error "Mixed versions compilation."
-#endif
-
 /**
  * Mail Client Arduino Library for Espressif's ESP32 and ESP8266, Raspberry Pi RP2040 Pico, and SAMD21 with u-blox NINA-W102 WiFi/Bluetooth module
  *
- * Created August 20, 2023
+ * Created July 20, 2024
  *
  * This library allows Espressif's ESP32, ESP8266, SAMD and RP2040 Pico devices to send and read Email through the SMTP and IMAP servers.
  *
@@ -319,7 +314,12 @@ bool ESP_Mail_Client::addSendingResult(SMTPSession *smtp, SMTP_Message *msg, boo
     status.completed = result;
     status.timestamp = smtp->ts;
     status.subject = msg->subject.c_str();
-    status.recipients = msg->_rcp[0].email.c_str();
+
+    if (msg->timestamp.tag.length() && msg->timestamp.format.length())
+        status.subject.replaceAll(msg->timestamp.tag, Time.getDateTimeString(Time.getCurrentTimestamp(), msg->timestamp.format.c_str()));
+
+    if (msg->_rcp.size())
+        status.recipients = msg->_rcp[0].email.c_str();
     smtp->sendingResult.add(&status);
 
     smtp->_cbData._sentSuccess = smtp->_sentSuccessCount;
@@ -347,8 +347,11 @@ bool ESP_Mail_Client::addSendingResult(SMTPSession *smtp, SMTP_Message *msg, boo
             sendCallback<SMTPSession *>(smtp, buf, false, false);
             snprintf(buf, bufLen, pgm2Str(esp_mail_str_96 /* "Date/Time: %s" */), Time.getDateTimeString(ts, "%B %d, %Y %H:%M:%S").c_str());
             sendCallback<SMTPSession *>(smtp, buf, false, false);
-            snprintf(buf, bufLen, pgm2Str(esp_mail_str_97 /* "Recipient: %s" */), msg->_rcp[0].email.c_str());
-            sendCallback<SMTPSession *>(smtp, buf, false, false);
+            if (msg->_rcp.size())
+            {
+                snprintf(buf, bufLen, pgm2Str(esp_mail_str_97 /* "Recipient: %s" */), msg->_rcp[0].email.c_str());
+                sendCallback<SMTPSession *>(smtp, buf, false, false);
+            }
             snprintf(buf, bufLen, pgm2Str(esp_mail_str_92 /* "Subject: %s" */), msg->subject.c_str());
             sendCallback<SMTPSession *>(smtp, buf, false, false);
             freeMem(&buf);
@@ -373,7 +376,8 @@ void ESP_Mail_Client::saveSendingLogs(SMTPSession *smtp, SMTP_Message *msg, bool
     mbfs->print(mbfs_type smtp->_session_cfg->sentLogs.storage_type, cm.c_str());
     mbfs->print(mbfs_type smtp->_session_cfg->sentLogs.storage_type, (int)smtp->ts);
     mbfs->print(mbfs_type smtp->_session_cfg->sentLogs.storage_type, cm.c_str());
-    mbfs->print(mbfs_type smtp->_session_cfg->sentLogs.storage_type, msg->_rcp[0].email.c_str());
+    if (msg->_rcp.size())
+        mbfs->print(mbfs_type smtp->_session_cfg->sentLogs.storage_type, msg->_rcp[0].email.c_str());
     mbfs->print(mbfs_type smtp->_session_cfg->sentLogs.storage_type, cm.c_str());
     mbfs->println(mbfs_type smtp->_session_cfg->sentLogs.storage_type, msg->subject.c_str());
     mbfs->close(mbfs_type smtp->_session_cfg->sentLogs.storage_type);
@@ -476,6 +480,8 @@ bool ESP_Mail_Client::mSendMail(SMTPSession *smtp, SMTP_Message *msg, bool close
     }
     else
     {
+        // If time config changed, we will update time
+        MailClient.prepareTime<SMTPSession *>(smtp->_session_cfg, smtp);
         // reuse session
 #if !defined(SILENT_MODE)
         PGM_P p1 = smtp->_sentSuccessCount || smtp->_sentFailedCount ? esp_mail_cb_str_10 /* "Sending next Email..." */ : esp_mail_cb_str_9 /* "Sending Email..." */;
@@ -551,12 +557,12 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
     if (msg->sender.email.length() > 0 && msg->author.email.length() > 0 &&
         strcmp(msg->sender.email.c_str(), msg->author.email.c_str()) != 0)
     {
-        appendAddressHeaderField(buf2, msg->author, esp_mail_rfc822_header_field_from, true, false, true);
-        appendAddressHeaderField(buf2, msg->sender, esp_mail_rfc822_header_field_sender, true, false, true);
+        appendAddressHeaderField(buf2, msg->author, esp_mail_rfc822_header_field_from, true, false, true, true);
+        appendAddressHeaderField(buf2, msg->sender, esp_mail_rfc822_header_field_sender, true, false, true, true);
     }
     // If author and transmitter (agent) are identical, send only 'From' header
     else if (msg->sender.email.length() > 0)
-        appendAddressHeaderField(buf2, msg->sender, esp_mail_rfc822_header_field_from, true, false, true);
+        appendAddressHeaderField(buf2, msg->sender, esp_mail_rfc822_header_field_from, true, false, true, true);
 
     if (!imap && smtp)
     {
@@ -596,7 +602,7 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
 
     for (uint8_t i = 0; i < msg->_rcp.size(); i++)
     {
-        appendAddressHeaderField(buf2, msg->_rcp[i], esp_mail_rfc822_header_field_to, i == 0, i > 0, i == msg->_rcp.size() - 1);
+        appendAddressHeaderField(buf2, msg->_rcp[i], esp_mail_rfc822_header_field_to, i == 0, i > 0, i == msg->_rcp.size() - 1, true);
         if (!imap && smtp)
         {
             // only address
@@ -646,7 +652,7 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
     // Construct 'Cc' header field.
     for (uint8_t i = 0; i < msg->_cc.size(); i++)
     {
-        appendAddressHeaderField(buf2, msg->_cc[i], esp_mail_rfc822_header_field_cc, i == 0, i > 0, i == msg->_cc.size() - 1);
+        appendAddressHeaderField(buf2, msg->_cc[i], esp_mail_rfc822_header_field_cc, i == 0, i > 0, i == msg->_cc.size() - 1, true);
         if (!imap)
         {
             // only address
@@ -712,7 +718,10 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
         return false;
 
     MB_String s;
-    appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_subject].text, msg->subject.c_str(), false, true);
+    appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_subject].text, MailClient.encodeBUTF8(msg->subject.c_str()).c_str(), false, true);
+
+    if (msg->timestamp.tag.length() && msg->timestamp.format.length())
+        s.replaceAll(msg->timestamp.tag, Time.getDateTimeString(Time.getCurrentTimestamp(), msg->timestamp.format.c_str()));
 
     // Construct the 'Date' header field.
     // The 'Date' header field should be valid and should be included in the message headers to
@@ -796,10 +805,10 @@ bool ESP_Mail_Client::sendContent(SMTPSession *smtp, SMTP_Message *msg, bool clo
         appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_references].text, msg->references.c_str(), false, true);
 
     if (msg->comments.length() > 0)
-        appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_comments].text, msg->comments.c_str(), false, true);
+        appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_comments].text, MailClient.encodeBUTF8(msg->comments.c_str()).c_str(), false, true);
 
     if (msg->keywords.length() > 0)
-        appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_keywords].text, msg->keywords.c_str(), false, true);
+        appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_keywords].text, MailClient.encodeBUTF8(msg->keywords.c_str()).c_str(), false, true);
 
     if (msg->messageID.length() > 0)
         appendHeaderField(s, rfc822_headers[esp_mail_rfc822_header_field_msg_id].text, msg->messageID.c_str(), false, true, esp_mail_string_mark_type_angle_bracket);
@@ -823,7 +832,7 @@ void ESP_Mail_Client::altSendCallback(SMTPSession *smtp, PGM_P cbMsg, PGM_P dbMs
     else if (imap && !calDataLen)
     {
 #if defined(ENABLE_IMAP)
-        printDebug<IMAPSession*>(imap, cbMsg, dbMsg, type, prependCRLF, success);
+        printDebug<IMAPSession *>(imap, cbMsg, dbMsg, type, prependCRLF, success);
 #endif
     }
 #endif
@@ -989,11 +998,11 @@ void ESP_Mail_Client::getRFC822MsgEnvelope(SMTPSession *smtp, SMTP_Message *msg,
 
     // Construct 'From' header field.
     if (msg->from.email.length() > 0)
-        appendAddressHeaderField(buf, msg->from, esp_mail_rfc822_header_field_from, true, false, true);
+        appendAddressHeaderField(buf, msg->from, esp_mail_rfc822_header_field_from, true, false, true, true);
 
     // Construct 'Sender' header field.
     if (msg->sender.email.length() > 0)
-        appendAddressHeaderField(buf, msg->sender, esp_mail_rfc822_header_field_sender, true, false, true);
+        appendAddressHeaderField(buf, msg->sender, esp_mail_rfc822_header_field_sender, true, false, true, true);
 
     if (msg->response.reply_to.length() > 0)
         appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_reply_to].text, msg->response.reply_to.c_str(), false, true, esp_mail_string_mark_type_angle_bracket);
@@ -1003,22 +1012,22 @@ void ESP_Mail_Client::getRFC822MsgEnvelope(SMTPSession *smtp, SMTP_Message *msg,
 
     // Construct 'To' header field.
     for (uint8_t i = 0; i < msg->_rcp.size(); i++)
-        appendAddressHeaderField(buf, msg->_rcp[i], esp_mail_rfc822_header_field_to, i == 0, i > 0, i == msg->_rcp.size() - 1);
+        appendAddressHeaderField(buf, msg->_rcp[i], esp_mail_rfc822_header_field_to, i == 0, i > 0, i == msg->_rcp.size() - 1, true);
 
     for (uint8_t i = 0; i < msg->_cc.size(); i++)
-        appendAddressHeaderField(buf, msg->_cc[i], esp_mail_rfc822_header_field_cc, i == 0, i > 0, i == msg->_cc.size() - 1);
+        appendAddressHeaderField(buf, msg->_cc[i], esp_mail_rfc822_header_field_cc, i == 0, i > 0, i == msg->_cc.size() - 1, true);
 
     for (uint8_t i = 0; i < msg->_bcc.size(); i++)
-        appendAddressHeaderField(buf, msg->_bcc[i], esp_mail_rfc822_header_field_bcc, i == 0, i > 0, i == msg->_bcc.size() - 1);
+        appendAddressHeaderField(buf, msg->_bcc[i], esp_mail_rfc822_header_field_bcc, i == 0, i > 0, i == msg->_bcc.size() - 1, true);
 
     if (msg->subject.length() > 0)
-        appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_subject].text, msg->subject.c_str(), false, true);
+        appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_subject].text, MailClient.encodeBUTF8(msg->subject.c_str()).c_str(), false, true);
 
     if (msg->keywords.length() > 0)
-        appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_keywords].text, msg->keywords.c_str(), false, true);
+        appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_keywords].text, MailClient.encodeBUTF8(msg->keywords.c_str()).c_str(), false, true);
 
     if (msg->comments.length() > 0)
-        appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_comments].text, msg->comments.c_str(), false, true);
+        appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_comments].text, MailClient.encodeBUTF8(msg->comments.c_str()).c_str(), false, true);
 
     if (msg->in_reply_to.length() > 0)
         appendHeaderField(buf, rfc822_headers[esp_mail_rfc822_header_field_in_reply_to].text, msg->in_reply_to.c_str(), false, true);
@@ -2205,6 +2214,9 @@ void ESP_Mail_Client::encodingText(SMTPSession *smtp, SMTP_Message *msg, uint8_t
             content += s;
         s.clear();
     }
+
+    if (msg->timestamp.tag.length() && msg->timestamp.format.length())
+        content.replaceAll(msg->timestamp.tag, Time.getDateTimeString(Time.getCurrentTimestamp(), msg->timestamp.format.c_str()));
 }
 
 void ESP_Mail_Client::encodeQP(const char *buf, char *out)
@@ -3290,7 +3302,7 @@ bool SMTPSession::connect(bool &ssl)
     if (!MailClient.beginConnection<SMTPSession *>(_session_cfg, this, secureMode))
         return false;
 
-        // server connected
+    // server connected
 #if !defined(SILENT_MODE)
     if (!_customCmdResCallback)
     {
@@ -3531,8 +3543,7 @@ SMTP_Status SMTPSession::status()
 
 void SMTPSession::setSystemTime(time_t ts, float gmtOffset)
 {
-    MailClient.Time.TZ = gmtOffset;
-    MailClient.Time.setTimestamp(ts);
+    MailClient.Time.setTimestamp(ts, gmtOffset);
 }
 
 void SMTPSession::keepAlive(int tcpKeepIdleSeconds, int tcpKeepIntervalSeconds, int tcpKeepCount)
@@ -3558,6 +3569,11 @@ void SMTPSession::setClient(Client *client)
 void SMTPSession::setGSMClient(Client *client, void *modem, const char *pin, const char *apn, const char *user, const char *password)
 {
     this->client.setGSMClient(client, modem, pin, apn, user, password);
+}
+
+void SMTPSession::setEthernetClient(Client *client, uint8_t macAddress[6], int csPin, int resetPin, ESP_Mail_StaticIP *staticIP)
+{
+    this->client.setEthernetClient(client, macAddress, csPin, resetPin, staticIP);
 }
 
 void SMTPSession::networkConnectionRequestCallback(NetworkConnectionRequestCallback networkConnectionCB)
